@@ -1,6 +1,7 @@
 # Local research and generated deliverables
 work/
 outputs/
+.worktrees/
 
 # Dependencies and build artifacts
 node_modules/
