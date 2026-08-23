@@ -1,0 +1,15 @@
+{
+  "name": "milestoneproof",
+  "private": true,
+  "packageManager": "pnpm@10.18.2",
+  "scripts": {
+    "build": "pnpm --filter @milestoneproof/shared build && pnpm --filter @milestoneproof/web build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "pnpm lint:genvm && pnpm --filter @milestoneproof/web lint",
+    "lint:genvm": "uvx --from genvm-linter genvm-lint check packages/contracts/milestoneproof.py",
+    "test": "pnpm -r --sequential test",
+    "test:contract": "pnpm --filter @milestoneproof/contracts test",
+    "test:web": "pnpm --filter @milestoneproof/web test",
+    "e2e:live": "pnpm --filter @milestoneproof/web e2e:live"
+  }
+}
