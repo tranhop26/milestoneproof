@@ -21,6 +21,7 @@ MAX_CRITERION_LENGTH = 500
 MAX_ALLOWED_SOURCES = 4
 MAX_SOURCE_LENGTH = 32
 MAX_CLIENT_NONCE_LENGTH = 128
+ALLOWED_SOURCE_KINDS = ("REPOSITORY", "RELEASE", "CI", "DEPLOYMENT")
 
 ZERO_ADDRESS = gl.Address("0x0000000000000000000000000000000000000000")
 
@@ -196,6 +197,8 @@ class MilestoneProof(gl.Contract):
             raise gl.UserError("too many allowed sources")
         for source in allowed_sources:
             self._validate_required_text(source, MAX_SOURCE_LENGTH, "allowed source")
+            if source not in ALLOWED_SOURCE_KINDS:
+                raise gl.UserError("invalid allowed source")
         deadline = definition.get("deadline")
         if not isinstance(deadline, int) or deadline <= gl.message_raw.datetime:
             raise gl.UserError("deadline must be in the future")
@@ -238,8 +241,13 @@ class MilestoneProof(gl.Contract):
             raise gl.UserError("page size must be between 1 and 50")
         if int(offset) < 0:
             raise gl.UserError("page offset must be non-negative")
-        newest_first = list(reversed(project_ids))
-        return newest_first[int(offset) : int(offset) + int(limit)]
+        total = len(project_ids)
+        start = int(offset)
+        stop = min(start + int(limit), total)
+        page = []
+        for position in range(start, stop):
+            page.append(project_ids[total - position - 1])
+        return page
 
     def _sponsor_nonce_key(self, sponsor: gl.Address, client_nonce: str) -> str:
         return f"{sponsor}:{client_nonce}"

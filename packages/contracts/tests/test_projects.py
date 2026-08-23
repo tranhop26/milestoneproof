@@ -11,6 +11,19 @@ LOCKED = 0
 OPEN = 1
 
 
+class DirectIndexOnlyArray(gl.DynArray):
+    def __init__(self, values):
+        super().__init__(values)
+        self.index_reads = []
+
+    def __reversed__(self):
+        raise AssertionError("actor pagination must not reverse the full index")
+
+    def __getitem__(self, index):
+        self.index_reads.append(index)
+        return super().__getitem__(index)
+
+
 def test_contract_starts_empty(chain):
     assert chain.contract.get_config() == [0, 3, 3, 4, 3, 72 * 60 * 60]
     assert chain.contract.get_project_count() == 0
@@ -164,6 +177,19 @@ def test_create_project_rejects_invalid_milestone_definitions(chain, milestones,
         chain.create_project(milestones)
 
 
+def test_create_project_rejects_invalid_source_kind_before_mutating_registry(chain, valid_milestones):
+    invalid_milestones = deepcopy(valid_milestones)
+    invalid_milestones[1]["allowed_sources"] = ["INTERNAL_API"]
+
+    with pytest.raises(Revert, match="invalid allowed source"):
+        chain.create_project(invalid_milestones, nonce="grant-001")
+
+    assert chain.call("get_project_count") == 0
+    assert chain.call("get_sponsor_project_count", SPONSOR) == 0
+    assert chain.call("get_builder_project_count", BUILDER) == 0
+    assert chain.create_project(valid_milestones, nonce="grant-001") == 1
+
+
 def test_creation_copies_milestone_definitions_so_inputs_cannot_mutate_records(chain, valid_milestones):
     input_milestones = deepcopy(valid_milestones)
     chain.create_project(input_milestones)
@@ -198,6 +224,14 @@ def test_actor_project_indexes_are_newest_first_and_page_capped(chain, valid_mil
     assert chain.call("get_builder_project_ids", BUILDER, 1, 2) == [2, 1]
     with pytest.raises(Revert, match="page size must be between 1 and 50"):
         chain.call("get_sponsor_project_ids", SPONSOR, 0, 51)
+
+
+def test_actor_project_page_reads_only_requested_reverse_region(chain):
+    actor_projects = DirectIndexOnlyArray([1, 2, 3, 4, 5])
+    chain.contract.sponsor_project_ids[SPONSOR] = actor_projects
+
+    assert chain.call("get_sponsor_project_ids", SPONSOR, 1, 2) == [4, 3]
+    assert actor_projects.index_reads == [3, 2]
 
 
 def test_unknown_mutation_method_does_not_exist(chain):
