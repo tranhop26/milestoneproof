@@ -149,7 +149,7 @@ export async function runWriteAndReadback<TReadback>(
       "Contract readback succeeded, but the local confirmation update failed.",
       { cause: error },
     )
-    onState({ phase: "ERROR", progressPhase: "SUCCESS", hash, code: normalized.code, message: normalized.message })
+    onState({ phase: "ERROR", progressPhase: "READBACK", hash, code: normalized.code, message: normalized.message })
     throw normalized
   }
   onState({ phase: "READBACK", hash, message: "Authoritative contract readback confirmed." })

@@ -146,7 +146,7 @@ describe("runWriteAndReadback", () => {
     expect(states.at(-1)).toMatchObject({
       phase: "ERROR",
       code: "LOCAL_CONFIRMATION_FAILED",
-      progressPhase: "SUCCESS",
+      progressPhase: "READBACK",
     })
     expect(states.map(({ phase }) => phase)).not.toContain("READBACK")
   })

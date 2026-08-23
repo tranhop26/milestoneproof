@@ -42,4 +42,17 @@ describe("TransactionPanel", () => {
       `https://explorer-studio.genlayer.com/tx/${TX_HASH}`,
     )
   })
+
+  it("shows authoritative readback as reached when only local confirmation fails", () => {
+    render(<TransactionPanel state={{
+      phase: "ERROR",
+      progressPhase: "READBACK",
+      code: "LOCAL_CONFIRMATION_FAILED",
+      hash: TX_HASH,
+      message: "The local confirmation update failed.",
+    }} />)
+
+    const progress = screen.getByRole("list", { name: "Transaction progress" })
+    expect(within(progress).getByText(/readback/i).closest("li")).toHaveClass("step-complete")
+  })
 })
