@@ -161,9 +161,58 @@ button { color: inherit; }
 .truthful-empty h2 { margin: 13px 0 7px; color: #d4d4d8; font-size: 15px; }
 .truthful-empty p { max-width: 470px; margin: 0; font-size: 11px; line-height: 1.6; }
 .submission-index { display: grid; gap: 8px; }
-.submission-index article { display: grid; grid-template-columns: 1fr 1fr auto; align-items: center; gap: 12px; padding: 14px; border: 1px solid #29292d; border-radius: 8px; font-size: 11px; }
+.submission-index article, .submission-row { display: grid; grid-template-columns: 1fr 1fr auto; align-items: center; gap: 12px; padding: 14px; border: 1px solid #29292d; border-radius: 8px; font-size: 11px; }
+.submission-row:hover { border-color: #3f3f46; background: #161618; }
 .submission-index span { color: #71717a; }
 .submission-index strong { color: #d4d4d8; font: 11px ui-monospace, monospace; }
+
+.evidence-editor { display: grid; gap: 16px; }
+.evidence-editor-header, .detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.evidence-editor-header h3, .detail-heading h2 { margin: 5px 0 0; color: #e4e4e7; font-size: 15px; }
+.evidence-editor-header p { margin: 6px 0 0; color: var(--faint); font-size: 11px; }
+.evidence-editor-header > span, .revision-chip, .ready-chip { padding: 5px 8px; border: 1px solid #3f3f46; border-radius: 999px; color: #a1a1aa; background: #18181b; font-size: 9px; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+.ready-chip { color: #6ee7b7; border-color: rgba(52,211,153,.3); background: rgba(16,185,129,.07); }
+.evidence-row-list { display: grid; gap: 12px; }
+.evidence-row { position: relative; display: grid; gap: 12px; margin: 0; padding: 18px; border: 1px solid #29292d; border-radius: 9px; background: #141416; }
+.evidence-row legend { padding: 0 7px; color: #71717a; font-size: 9px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+.evidence-editor-actions { display: flex; justify-content: space-between; gap: 12px; }
+.readback-confirmation { padding: 13px 15px; border: 1px solid rgba(52,211,153,.28); border-radius: 8px; color: #6ee7b7; background: rgba(16,185,129,.07); font-size: 12px; }
+
+.submission-detail { display: grid; gap: 15px; }
+.submission-header { align-items: start; }
+.submission-identifiers { display: grid; justify-items: end; gap: 9px; color: #71717a; font-size: 10px; }
+.submission-identifiers code { display: block; max-width: 290px; overflow: hidden; color: #a1a1aa; text-overflow: ellipsis; }
+.submission-identifiers a { display: inline-flex; align-items: center; gap: 6px; color: #d4d4d8; }
+.revision-bar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #27272a; border-radius: 10px; color: #34d399; background: rgba(16,185,129,.035); }
+.revision-bar div { display: grid; gap: 3px; }
+.revision-bar strong { color: #d4d4d8; font-size: 11px; }
+.revision-bar span { color: #71717a; font-size: 10px; }
+.detail-card, .audit-card { padding: 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.evidence-readback-list { display: grid; gap: 10px; margin-top: 18px; }
+.evidence-readback-list article { padding: 16px; border: 1px solid #29292d; border-radius: 9px; background: #141416; }
+.evidence-readback-list header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
+.evidence-readback-list header > span { color: #52525b; font: 9px ui-monospace, monospace; }
+.evidence-readback-list header strong { font-size: 11px; }
+.evidence-readback-list header a { color: #a1a1aa; }
+.evidence-readback-list dl { display: grid; gap: 8px; margin: 15px 0 0; }
+.evidence-readback-list dl > div { display: grid; grid-template-columns: 74px minmax(0,1fr); gap: 10px; }
+.evidence-readback-list dt { color: #71717a; font-size: 9px; text-transform: uppercase; }
+.evidence-readback-list dd { overflow: hidden; margin: 0; color: #a1a1aa; font: 10px ui-monospace, monospace; text-overflow: ellipsis; }
+.audit-grid { display: grid; grid-template-columns: minmax(0,1.25fr) minmax(240px,.75fr); gap: 14px; }
+.audit-rationale { grid-column: 1 / -1; }
+.coverage-list { display: grid; gap: 8px; margin: 17px 0 0; padding: 0; list-style: none; }
+.coverage-list li, .integrity-grid > div { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 12px; border: 1px solid #29292d; border-radius: 7px; color: #a1a1aa; background: #141416; font-size: 11px; }
+.coverage-list strong { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; }
+.integrity-grid { display: grid; gap: 8px; margin-top: 17px; }
+.integrity-grid strong { font-size: 10px; }
+.audit-pass { color: #6ee7b7; }
+.audit-fail { color: #fca5a5; }
+.audit-pending { color: #93c5fd; }
+.audit-rationale > p:last-child { margin: 16px 0 0; color: #a1a1aa; font-size: 12px; line-height: 1.7; white-space: pre-wrap; }
+.action-card { display: grid; gap: 16px; }
+.action-stack { display: grid; justify-items: start; gap: 8px; }
+.action-stack p, .read-only-note, .terminal-note { margin: 0; color: #a1a1aa; font-size: 11px; line-height: 1.6; }
+.terminal-note { padding: 12px 14px; border: 1px solid #3f3f46; border-radius: 8px; background: #161618; }
 
 .status-badge { display: inline-flex; align-items: center; gap: 5px; min-height: 23px; padding: 0 8px; border: 1px solid currentColor; border-radius: 999px; font-size: 10px; font-weight: 650; white-space: nowrap; }
 .status-success { color: #6ee7b7; background: rgba(16,185,129,.08); }
@@ -204,6 +253,9 @@ button { color: inherit; }
   .create-sidebar { position: static; grid-row: 1; }
   .summary-card { display: none; }
   .project-header, .workspace-grid { grid-template-columns: 1fr; }
+  .audit-grid { grid-template-columns: 1fr; }
+  .audit-rationale { grid-column: auto; }
+  .submission-identifiers { justify-items: start; }
   .contract-link { position: static; justify-self: start; }
 }
 
@@ -225,6 +277,10 @@ button { color: inherit; }
   .milestone-rail { grid-template-columns: 1fr; }
   .milestone-node:not(:last-child)::after { top: 21px; left: 9px; width: 1px; height: calc(100% - 4px); }
   .workspace-tabs { margin-right: -14px; }
+  .evidence-editor-actions { align-items: stretch; flex-direction: column; }
+  .revision-bar { grid-template-columns: auto 1fr; }
+  .revision-bar > svg:last-child { display: none; }
+  .evidence-readback-list dl > div { grid-template-columns: 1fr; gap: 4px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

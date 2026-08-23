@@ -1,12 +1,15 @@
-import type { MilestoneView, ProjectView } from "@milestoneproof/shared"
+import type { EvidenceInput, MilestoneView, ProjectView } from "@milestoneproof/shared"
 import { ExternalLink, FileCheck2, Fingerprint, ShieldCheck } from "lucide-react"
 import { useState } from "react"
-import { useParams } from "react-router-dom"
+import { Link, useParams } from "react-router-dom"
 
+import { EvidenceEditor, type EvidenceReadbackConfirmation } from "../components/EvidenceEditor"
 import { MilestoneRail } from "../components/MilestoneRail"
 import { StatusBadge } from "../components/StatusBadge"
-import { useMilestoneProofContract, useMilestones, useProject } from "../hooks/useMilestoneProof"
+import { TransactionPanel } from "../components/TransactionPanel"
+import { useMilestoneActions, useMilestoneProofContract, useMilestones, useProject } from "../hooks/useMilestoneProof"
 import { STUDIONET_EXPLORER_ADDRESS_URL, type MilestoneProofContract } from "../lib/contract"
+import { useWallet } from "../lib/wallet"
 
 const TABS = ["Overview", "Evidence", "Submissions", "On-chain activity"] as const
 type WorkspaceTab = typeof TABS[number]
@@ -31,11 +34,21 @@ function OverviewPanel({ milestones }: { milestones: MilestoneView[] }) {
 
 function WorkspaceContent({ contract, project }: { contract: MilestoneProofContract, project: ProjectView }) {
   const milestoneQueries = useMilestones(contract, project)
+  const wallet = useWallet()
+  const actions = useMilestoneActions(contract)
   const [tab, setTab] = useState<WorkspaceTab>("Overview")
   if (milestoneQueries.isPending) return <section aria-live="polite" className="workspace-loading">Loading authoritative milestones…</section>
   if (milestoneQueries.error || !milestoneQueries.data) return <section className="form-alert" role="alert">{milestoneQueries.error instanceof Error ? milestoneQueries.error.message : "Milestone readback failed."}</section>
   const milestones = milestoneQueries.data
   const submissions = milestones.filter(({ currentSubmissionId }) => currentSubmissionId !== "0")
+  const currentMilestone = milestones[project.currentMilestone]
+  const isBuilder = wallet.account?.toLowerCase() === project.builder
+  const submitEvidence = async (evidence: EvidenceInput[]): Promise<EvidenceReadbackConfirmation> => {
+    if (!currentMilestone) throw new Error("The current milestone is unavailable.")
+    const result = await actions.mutateAsync({ kind: "submit", project, milestone: currentMilestone, evidence })
+    if ("submittedDigest" in result) return result
+    throw new Error("Submission readback was not returned.")
+  }
 
   return (
     <div className="workspace-stack">
@@ -57,9 +70,11 @@ function WorkspaceContent({ contract, project }: { contract: MilestoneProofContr
 
       <section aria-label={`${tab} panel`} className="tab-panel" role="tabpanel">
         {tab === "Overview" && <OverviewPanel milestones={milestones} />}
-        {tab === "Evidence" && <div className="truthful-empty"><FileCheck2 size={20} /><h2>Evidence belongs to submissions</h2><p>{submissions.length ? "Open a submission to inspect its authoritative evidence readback." : "No milestone currently references an on-chain submission."}</p></div>}
-        {tab === "Submissions" && (submissions.length ? <div className="submission-index">{submissions.map((milestone) => <article key={milestone.currentSubmissionId}><span>Milestone {milestone.index + 1}</span><strong>Submission #{milestone.currentSubmissionId}</strong><StatusBadge status={milestone.status} /></article>)}</div> : <div className="truthful-empty"><h2>No submissions yet</h2><p>The contract has not recorded a submission for this project.</p></div>)}
-        {tab === "On-chain activity" && <div className="truthful-empty"><h2>No activity feed available</h2><p>No on-chain activity is available from contract reads yet.</p></div>}
+        {tab === "Evidence" && currentMilestone?.status === "OPEN" && isBuilder && <EvidenceEditor allowedSources={currentMilestone.allowedSources} disabled={actions.isPending} onSubmit={submitEvidence} submitLabel="Submit evidence" />}
+        {tab === "Evidence" && currentMilestone?.status === "OPEN" && !isBuilder && <div className="truthful-empty"><FileCheck2 size={20} /><h2>Builder action required</h2><p>Only the frozen builder can submit evidence for this open milestone.</p></div>}
+        {tab === "Evidence" && currentMilestone?.status !== "OPEN" && <div className="truthful-empty"><FileCheck2 size={20} /><h2>Evidence belongs to submissions</h2><p>{submissions.length ? "Open a submission to inspect its authoritative evidence readback." : "No milestone currently references an on-chain submission."}</p></div>}
+        {tab === "Submissions" && (submissions.length ? <div className="submission-index">{submissions.map((milestone) => <Link className="submission-row" key={milestone.currentSubmissionId} to={`/submissions/${milestone.currentSubmissionId}`}><span>Milestone {milestone.index + 1}</span><strong>Submission #{milestone.currentSubmissionId}</strong><StatusBadge status={milestone.status} /></Link>)}</div> : <div className="truthful-empty"><h2>No submissions yet</h2><p>The contract has not recorded a submission for this project.</p></div>)}
+        {tab === "On-chain activity" && (actions.transactionState.phase === "DISCONNECTED" ? <div className="truthful-empty"><h2>No activity feed available</h2><p>No on-chain activity is available from contract reads yet.</p></div> : <TransactionPanel state={actions.transactionState} />)}
       </section>
     </div>
   )

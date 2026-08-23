@@ -85,6 +85,12 @@ function fakeContract(
     },
     writes: {
       createProject: vi.fn(async () => TX_HASH),
+      submitEvidence: vi.fn(),
+      resolveSubmission: vi.fn(),
+      resubmitEvidence: vi.fn(),
+      supplementEvidence: vi.fn(),
+      retryResolution: vi.fn(),
+      expireMilestone: vi.fn(),
       waitForFinalized: vi.fn(async () => ({ executionSucceeded: true })),
     },
   }

@@ -6,6 +6,7 @@ import { useWallet } from "./lib/wallet"
 import { CreateProject } from "./pages/CreateProject"
 import { Landing } from "./pages/Landing"
 import { ProjectWorkspace } from "./pages/ProjectWorkspace"
+import { SubmissionDetail } from "./pages/SubmissionDetail"
 
 function WalletControl() {
   const wallet = useWallet()
@@ -55,7 +56,7 @@ export function App() {
         <Route element={<RoutePlaceholder detail="Connect a wallet to load sponsor or builder projects directly from the contract." title="Projects" />} path="/projects" />
         <Route element={<CreateProject />} path="/projects/new" />
         <Route element={<ProjectWorkspace />} path="/projects/:projectId" />
-        <Route element={<RoutePlaceholder detail="Evidence, consensus outcome, and transaction audit will appear here." title="Submission detail" />} path="/submissions/:submissionId" />
+        <Route element={<SubmissionDetail />} path="/submissions/:submissionId" />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Routes>
     </AppShell>

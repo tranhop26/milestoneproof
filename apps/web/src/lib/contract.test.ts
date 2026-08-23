@@ -7,6 +7,7 @@ import {
   type ContractClient,
   type CreateProjectInput,
 } from "./contract"
+import type { EvidenceInput } from "@milestoneproof/shared"
 
 const CONTRACT = "0xc000000000000000000000000000000000000001" as const
 const SPONSOR = "0x1000000000000000000000000000000000000001" as const
@@ -14,6 +15,13 @@ const BUILDER = "0x2000000000000000000000000000000000000002" as const
 const TX_HASH = `0x${"a".repeat(64)}` as `0x${string}`
 const U64_TOO_LARGE = (1n << 64n).toString()
 const U256_TOO_LARGE = (1n << 256n).toString()
+const EVIDENCE: EvidenceInput[] = [{
+  sourceKind: "REPOSITORY",
+  url: "https://github.com/example/compiler/commit/0123456789abcdef0123456789abcdef01234567",
+  subjectRef: "github.com/example/compiler",
+  versionRef: "0123456789abcdef0123456789abcdef01234567",
+  observedAt: "1800000100",
+}]
 
 const projectShape = [
   1,
@@ -95,6 +103,46 @@ describe("MilestoneProof contract adapter", () => {
       ],
       value: 0n,
     })
+  })
+
+  it.each([
+    ["submitEvidence", "submit_evidence", [42n, 1, [["REPOSITORY", EVIDENCE[0].url, EVIDENCE[0].subjectRef, EVIDENCE[0].versionRef, 1_800_000_100n]], "evidence:nonce"]],
+    ["resubmitEvidence", "resubmit_evidence", [42n, 1, [["REPOSITORY", EVIDENCE[0].url, EVIDENCE[0].subjectRef, EVIDENCE[0].versionRef, 1_800_000_100n]], "evidence:nonce"]],
+    ["supplementEvidence", "supplement_evidence", [88n, [["REPOSITORY", EVIDENCE[0].url, EVIDENCE[0].subjectRef, EVIDENCE[0].versionRef, 1_800_000_100n]], "evidence:nonce"]],
+  ] as const)("serializes %s with exact method and evidence argument order", async (writeName, functionName, args) => {
+    const write = client()
+    const contract = createMilestoneProofContract({ address: CONTRACT, readClient: client(), getWriteClient: async () => write })
+
+    const method = contract.writes[writeName] as (...values: unknown[]) => Promise<unknown>
+    const callArgs: unknown[] = writeName === "supplementEvidence"
+      ? ["88", EVIDENCE, "evidence:nonce"]
+      : ["42", 1, EVIDENCE, "evidence:nonce"]
+    await expect(method(...callArgs)).resolves.toBe(TX_HASH)
+    expect(write.writeContract).toHaveBeenCalledWith({ address: CONTRACT, functionName, args, value: 0n })
+  })
+
+  it.each([
+    ["resolveSubmission", "resolve_submission", [88n]],
+    ["retryResolution", "retry_resolution", [88n]],
+    ["expireMilestone", "expire_milestone", [42n, 1]],
+  ] as const)("serializes %s without invented nonce arguments", async (writeName, functionName, args) => {
+    const write = client()
+    const contract = createMilestoneProofContract({ address: CONTRACT, readClient: client(), getWriteClient: async () => write })
+
+    const method = contract.writes[writeName] as (...values: unknown[]) => Promise<unknown>
+    const callArgs: unknown[] = writeName === "expireMilestone" ? ["42", 1] : ["88"]
+    await expect(method(...callArgs)).resolves.toBe(TX_HASH)
+    expect(write.writeContract).toHaveBeenCalledWith({ address: CONTRACT, functionName, args, value: 0n })
+  })
+
+  it("rejects malformed or excessive evidence before calldata", async () => {
+    const getWriteClient = vi.fn(async () => client())
+    const contract = createMilestoneProofContract({ address: CONTRACT, readClient: client(), getWriteClient })
+
+    await expect(contract.writes.submitEvidence("42", 0, [], "nonce")).rejects.toThrow("between one and four")
+    await expect(contract.writes.submitEvidence("42", 0, Array.from({ length: 5 }, () => EVIDENCE[0]), "nonce")).rejects.toThrow("between one and four")
+    await expect(contract.writes.submitEvidence("42", 0, [{ ...EVIDENCE[0], versionRef: "main" }], "nonce")).rejects.toThrow("full git commit")
+    expect(getWriteClient).not.toHaveBeenCalled()
   })
 
   it.each([

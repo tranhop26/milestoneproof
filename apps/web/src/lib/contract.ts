@@ -2,9 +2,11 @@ import {
   parseConfig,
   parseMilestone,
   parseMilestoneInput,
+  parseEvidenceInput,
   parseProject,
   parseSubmission,
   type ConfigView,
+  type EvidenceInput,
   type MilestoneInput,
   type MilestoneView,
   type ProjectView,
@@ -60,6 +62,12 @@ export interface MilestoneProofReads {
 
 export interface MilestoneProofWrites {
   createProject(input: CreateProjectInput, clientNonce: string): Promise<TransactionHash>
+  submitEvidence(projectId: string, milestoneIndex: number, evidence: EvidenceInput[], clientNonce: string): Promise<TransactionHash>
+  resolveSubmission(submissionId: string): Promise<TransactionHash>
+  resubmitEvidence(projectId: string, milestoneIndex: number, evidence: EvidenceInput[], clientNonce: string): Promise<TransactionHash>
+  supplementEvidence(submissionId: string, evidence: EvidenceInput[], clientNonce: string): Promise<TransactionHash>
+  retryResolution(submissionId: string): Promise<TransactionHash>
+  expireMilestone(projectId: string, milestoneIndex: number): Promise<TransactionHash>
   waitForFinalized(hash: TransactionHash): Promise<FinalizedExecution>
 }
 
@@ -128,6 +136,34 @@ function requiredText(value: string, field: string, maxLength: number): string {
   if (!value.trim()) throw new ContractInputError(`${field} is required`)
   if (value.length > maxLength) throw new ContractInputError(`${field} is too long`)
   return value.trim()
+}
+
+function validateEvidence(rawEvidence: EvidenceInput[]): CalldataValue[] {
+  if (!Array.isArray(rawEvidence) || rawEvidence.length < 1 || rawEvidence.length > 4) {
+    throw new ContractInputError("evidence must contain between one and four items")
+  }
+  return rawEvidence.map((raw, index) => {
+    let evidence: EvidenceInput
+    try {
+      evidence = parseEvidenceInput(raw)
+    } catch (error) {
+      throw new ContractInputError(
+        `evidence ${index + 1} is invalid: ${error instanceof Error ? error.message : "invalid input"}`,
+      )
+    }
+    const subjectRef = requiredText(evidence.subjectRef, `evidence ${index + 1} subject`, 255)
+    const versionRef = requiredText(evidence.versionRef, `evidence ${index + 1} version`, 255)
+    const canonicalVersion = evidence.sourceKind === "REPOSITORY" || evidence.sourceKind === "CI"
+      ? versionRef.toLowerCase()
+      : versionRef
+    if ((evidence.sourceKind === "REPOSITORY" || evidence.sourceKind === "CI")
+      && !/^[0-9a-f]{40}$/.test(canonicalVersion)) {
+      throw new ContractInputError(`evidence ${index + 1} requires a full git commit`)
+    }
+    const observedAt = nonNegativeInteger(evidence.observedAt, `evidence ${index + 1} observed timestamp`)
+    if (observedAt > U64_MAX) throw new ContractInputError(`evidence ${index + 1} observed timestamp exceeds u64`)
+    return [evidence.sourceKind, evidence.url, subjectRef, canonicalVersion, observedAt]
+  })
 }
 
 function validateCreateProject(input: CreateProjectInput, now: number): {
@@ -217,6 +253,17 @@ export function createMilestoneProofContract({
     args,
   })
 
+  const write = async (functionName: string, args: CalldataValue[]): Promise<TransactionHash> => {
+    if (!getWriteClient) throw new Error("A wallet-backed client is required for writes")
+    const client = await getWriteClient()
+    return transactionHash(await client.writeContract({
+      address: contractAddress,
+      functionName,
+      args,
+      value: 0n,
+    }))
+  }
+
   const actorProjects = async (rawActor: string, role: ActorRole): Promise<string[]> => {
     const actor = address(rawActor, "actor")
     const prefix = role === "sponsor" ? "get_sponsor_project" : "get_builder_project"
@@ -251,21 +298,41 @@ export function createMilestoneProofContract({
       createProject: async (input, clientNonce) => {
         const validated = validateCreateProject(input, now())
         const nonce = requiredText(clientNonce, "client nonce", 128)
-        if (!getWriteClient) throw new Error("A wallet-backed client is required for writes")
-        const client = await getWriteClient()
-        return transactionHash(await client.writeContract({
-          address: contractAddress,
-          functionName: "create_project",
-          args: [
+        return write("create_project", [
             validated.builder,
             validated.title,
             validated.description,
             validated.milestones,
             nonce,
-          ],
-          value: 0n,
-        }))
+        ])
       },
+      submitEvidence: async (projectId, index, evidence, clientNonce) => write("submit_evidence", [
+        positiveId(projectId, "project id"),
+        milestoneIndex(index),
+        validateEvidence(evidence),
+        requiredText(clientNonce, "client nonce", 128),
+      ]),
+      resolveSubmission: async (submissionId) => write("resolve_submission", [
+        positiveId(submissionId, "submission id"),
+      ]),
+      resubmitEvidence: async (projectId, index, evidence, clientNonce) => write("resubmit_evidence", [
+        positiveId(projectId, "project id"),
+        milestoneIndex(index),
+        validateEvidence(evidence),
+        requiredText(clientNonce, "client nonce", 128),
+      ]),
+      supplementEvidence: async (submissionId, evidence, clientNonce) => write("supplement_evidence", [
+        positiveId(submissionId, "submission id"),
+        validateEvidence(evidence),
+        requiredText(clientNonce, "client nonce", 128),
+      ]),
+      retryResolution: async (submissionId) => write("retry_resolution", [
+        positiveId(submissionId, "submission id"),
+      ]),
+      expireMilestone: async (projectId, index) => write("expire_milestone", [
+        positiveId(projectId, "project id"),
+        milestoneIndex(index),
+      ]),
       waitForFinalized: async (hash) => {
         const receipt = await readClient.waitForTransactionReceipt({ hash, status: "FINALIZED" })
         return receipt.txExecutionResultName === "FINISHED_WITH_RETURN"
