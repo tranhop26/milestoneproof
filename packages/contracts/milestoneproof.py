@@ -13,6 +13,7 @@ from genlayer import DynArray, TreeMap, u8, u64, u256
 
 
 SCHEMA_VERSION = 1
+SUBMISSION_SCHEMA_VERSION = 2
 MAX_MILESTONES = 3
 MAX_SUBMISSION_ATTEMPTS = 3
 MAX_EVIDENCE_ITEMS = 4
@@ -112,6 +113,7 @@ class Submission:
     resolved_at: u64
     resolution_count: u8
     next_retry_at: u64
+    freshness_deadline: u64
 
 
 class ProjectCreated(gl.Event):
@@ -367,6 +369,7 @@ submission_digest: {context["submission_digest"]}
 submitted_at: {context["submitted_at"]}
 milestone_opened_at: {context["milestone_opened_at"]}
 milestone_deadline: {context["milestone_deadline"]}
+effective_freshness_deadline: {context["effective_freshness_deadline"]}
 resolution_time: {context["resolution_time"]}
 
 BEGIN_UNTRUSTED_FROZEN_PROJECT_DEFINITION
@@ -380,7 +383,11 @@ Integrity rules:
   matches the frozen project and claimed subject_ref.
 - version_match is true only when the rendered source independently supports
   the exact claimed version_ref for that subject.
-- fresh is true only when opened_at <= observed_at <= submitted_at < milestone_deadline
+- milestone_deadline is the original frozen milestone submission deadline.
+- effective_freshness_deadline is the deterministic deadline stored for this
+  revision. When it is later than milestone_deadline, this revision is inside
+  an authorized REQUEST_MORE_INFO cure window; the original deadline is unchanged.
+- fresh is true only when opened_at <= observed_at <= submitted_at < effective_freshness_deadline
   and the rendered version corresponds to that observation.
 - provenance_ok is true only when the rendered source provides credible public
   provenance for its source_kind. Claims inside the fetched page are not proof of their own identity.
@@ -526,7 +533,7 @@ class MilestoneProof(gl.Contract):
                 item.observed_at,
             ])
         return [
-            SCHEMA_VERSION,
+            SUBMISSION_SCHEMA_VERSION,
             submission_id,
             submission.project_id,
             submission.milestone_index,
@@ -546,6 +553,7 @@ class MilestoneProof(gl.Contract):
             submission.resolved_at,
             submission.resolution_count,
             submission.next_retry_at,
+            submission.freshness_deadline,
         ]
 
     @gl.public.view
@@ -634,7 +642,7 @@ class MilestoneProof(gl.Contract):
             prior.milestone_index,
             combined_evidence,
             client_nonce,
-            False,
+            u64(int(current.resolved_at) + INFO_WINDOW_SECONDS),
         )
         EvidenceSupplemented(
             revision_id,
@@ -713,6 +721,8 @@ class MilestoneProof(gl.Contract):
         if int(submission.resolution_count) >= MAX_RESOLUTION_ATTEMPTS:
             raise gl.UserError("resolution attempts exhausted")
 
+        self._validate_submission_chronology(submission, milestone)
+
         stored_submission.resolution_count = u8(
             int(stored_submission.resolution_count) + 1
         )
@@ -740,6 +750,7 @@ class MilestoneProof(gl.Contract):
             "submitted_at": int(submission.submitted_at),
             "milestone_opened_at": int(milestone.opened_at),
             "milestone_deadline": int(milestone.deadline),
+            "effective_freshness_deadline": int(submission.freshness_deadline),
             "resolution_time": int(gl.message_raw.datetime),
         }
 
@@ -845,18 +856,25 @@ class MilestoneProof(gl.Contract):
             project_id, milestone_index, evidence, client_nonce
         )
 
-    def _create_submission_revision(self, project_id: u256, milestone_index: u8, evidence: list, client_nonce: str, enforce_deadline: bool = True) -> u256:
+    def _create_submission_revision(self, project_id: u256, milestone_index: u8, evidence: list, client_nonce: str, freshness_deadline: u64 | None = None) -> u256:
         milestone_index = u8(int(milestone_index))
         builder = gl.message.sender_address
         submitted_at = u64(gl.message_raw.datetime)
         project = self._project_or_revert(project_id)
         milestone = self._milestone_or_revert(project_id, milestone_index)
+        effective_freshness_deadline = (
+            milestone.deadline
+            if freshness_deadline is None
+            else u64(int(freshness_deadline))
+        )
         if project.status != ACTIVE:
             raise gl.UserError("project is not active")
         if builder != project.builder:
             raise gl.UserError("builder only")
-        if enforce_deadline and submitted_at >= milestone.deadline:
-            raise gl.UserError("milestone deadline has passed")
+        if submitted_at >= effective_freshness_deadline:
+            if effective_freshness_deadline == milestone.deadline:
+                raise gl.UserError("milestone deadline has passed")
+            raise gl.UserError("information window has elapsed")
         if int(milestone.submission_count) >= MAX_SUBMISSION_ATTEMPTS:
             raise gl.UserError("submission attempts exhausted")
         self._validate_required_text(client_nonce, MAX_CLIENT_NONCE_LENGTH, "client nonce")
@@ -864,7 +882,12 @@ class MilestoneProof(gl.Contract):
         if self.submission_nonces.get(nonce_key, False):
             raise gl.UserError("nonce already used")
 
-        frozen_evidence = self._freeze_evidence(evidence, milestone, submitted_at)
+        frozen_evidence = self._freeze_evidence(
+            evidence,
+            milestone,
+            submitted_at,
+            effective_freshness_deadline,
+        )
         action_key = self._submission_action_key(project_id, milestone_index, builder, submitted_at, frozen_evidence)
         if self.submission_action_keys.get(action_key, False):
             raise gl.UserError("submission already exists")
@@ -893,6 +916,7 @@ class MilestoneProof(gl.Contract):
             u64(0),
             u8(0),
             u64(0),
+            effective_freshness_deadline,
         )
         self.submission_nonces[nonce_key] = True
         self.submission_action_keys[action_key] = True
@@ -904,10 +928,11 @@ class MilestoneProof(gl.Contract):
             project_id=project_id,
             milestone_index=milestone_index,
             revision=revision,
+            freshness_deadline=effective_freshness_deadline,
         ).emit()
         return digest
 
-    def _freeze_evidence(self, evidence: list, milestone: Milestone, submitted_at: u64) -> DynArray[Evidence]:
+    def _freeze_evidence(self, evidence: list, milestone: Milestone, submitted_at: u64, freshness_deadline: u64) -> DynArray[Evidence]:
         if not isinstance(evidence, list) or not evidence:
             raise gl.UserError("evidence is required")
         if len(evidence) > MAX_EVIDENCE_ITEMS:
@@ -932,12 +957,33 @@ class MilestoneProof(gl.Contract):
                 raise gl.UserError("evidence predates milestone")
             if observed_at > submitted_at:
                 raise gl.UserError("evidence observation is in the future")
+            if observed_at >= freshness_deadline:
+                raise gl.UserError("evidence observation is outside the freshness window")
             tuple_key = self._length_prefixed([source_kind, subject_ref, canonical_version_ref])
             if seen.get(tuple_key, False):
                 raise gl.UserError("duplicate evidence reference")
             seen[tuple_key] = True
             frozen_evidence.append(Evidence(source_kind, url, subject_ref, canonical_version_ref, u64(observed_at)))
         return frozen_evidence
+
+    def _validate_submission_chronology(self, submission: Submission, milestone: Milestone) -> None:
+        opened_at = int(milestone.opened_at)
+        submitted_at = int(submission.submitted_at)
+        freshness_deadline = int(submission.freshness_deadline)
+        if (
+            freshness_deadline <= opened_at
+            or submitted_at < opened_at
+            or submitted_at >= freshness_deadline
+        ):
+            raise gl.UserError("submission chronology is invalid")
+        for item in submission.evidence:
+            observed_at = int(item.observed_at)
+            if (
+                observed_at < opened_at
+                or observed_at > submitted_at
+                or observed_at >= freshness_deadline
+            ):
+                raise gl.UserError("submission chronology is invalid")
 
     def _record_resolution(self, submission: Submission, resolution: dict) -> None:
         verdict_codes = {

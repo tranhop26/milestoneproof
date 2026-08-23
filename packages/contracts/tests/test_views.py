@@ -85,8 +85,8 @@ def test_versioned_detail_views_have_exact_bounded_field_shapes(chain, valid_mil
     assert len(milestone[4]) <= 10
     assert len(milestone[5]) <= 4
 
-    assert len(submission) == 20
-    assert submission[0] == 1
+    assert len(submission) == 21
+    assert submission[0] == 2
     assert [type(value) for value in submission] == [
         int,
         GL.u256,
@@ -108,6 +108,7 @@ def test_versioned_detail_views_have_exact_bounded_field_shapes(chain, valid_mil
         GL.u64,
         GL.u8,
         GL.u64,
+        GL.u64,
     ]
     assert len(submission[8]) == 1
     assert len(submission[8]) <= 4
@@ -122,3 +123,4 @@ def test_versioned_detail_views_have_exact_bounded_field_shapes(chain, valid_mil
     assert submission[9] == submission_id
     assert submission[18] == 0
     assert submission[19] == 0
+    assert submission[20] == valid_milestones[0]["deadline"]

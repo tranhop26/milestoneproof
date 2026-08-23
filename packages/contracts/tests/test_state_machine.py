@@ -120,6 +120,80 @@ def test_request_more_info_supplement_creates_a_new_canonical_revision(chain):
     assert snapshot(chain, project_id, [first_id, second_id]) == before
 
 
+@pytest.mark.parametrize("request_time", [1_800_000_149, 1_800_000_150])
+def test_post_deadline_information_cure_uses_fixed_effective_deadline_and_can_approve(
+    chain, request_time
+):
+    milestone_deadline = 1_800_000_150
+    chain.set_now(1_800_000_000)
+    project_id = create_one_milestone_project(chain, deadline=milestone_deadline)
+    first_id = chain.submit(
+        project_id, evidence(COMMIT_1, 1_800_000_000), "first"
+    )
+    resolve_as(chain, first_id, "REQUEST_MORE_INFO", now=request_time)
+
+    cure_time = milestone_deadline + 1
+    chain.set_now(cure_time)
+    cure_id = chain.call(
+        "supplement_evidence",
+        first_id,
+        evidence(COMMIT_2, cure_time),
+        f"cure-{request_time}",
+        sender=BUILDER,
+    )
+
+    cure = chain.submission(cure_id)
+    assert cure.submitted_at > chain.milestone(project_id, 0).deadline
+    assert cure.freshness_deadline == request_time + INFO_WINDOW
+    assert cure.submitted_at < cure.freshness_deadline
+    assert chain.submission(first_id).freshness_deadline == milestone_deadline
+    assert chain.milestone(project_id, 0).submission_count == 2
+    assert chain.project(project_id).current_milestone == 0
+
+    resolve_as(chain, cure_id, "APPROVED", now=cure_time + 1)
+
+    assert chain.submission(cure_id).verdict == APPROVED
+    assert chain.submission(cure_id).fresh is True
+    assert chain.submission(cure_id).resolution_count == 1
+    assert chain.milestone(project_id, 0).state == APPROVED_MILESTONE
+    assert chain.project(project_id).status == COMPLETED
+
+
+def test_initial_revision_keeps_the_frozen_milestone_freshness_deadline(chain):
+    milestone_deadline = 1_800_000_200
+    chain.set_now(1_800_000_000)
+    project_id = create_one_milestone_project(chain, deadline=milestone_deadline)
+    submission_id = chain.submit(
+        project_id, evidence(COMMIT_1, 1_800_000_000), "initial"
+    )
+
+    assert chain.submission(submission_id).freshness_deadline == milestone_deadline
+    resolve_as(chain, submission_id, "APPROVED", now=milestone_deadline)
+    assert chain.submission(submission_id).verdict == APPROVED
+    assert chain.project(project_id).status == COMPLETED
+
+
+def test_deterministic_chronology_rejects_unsafe_effective_deadline_before_nondet(
+    chain,
+):
+    chain.set_now(1_800_000_000)
+    project_id = create_one_milestone_project(chain)
+    submission_id = chain.submit(
+        project_id, evidence(COMMIT_1, 1_800_000_000), "initial"
+    )
+    chain.submission(submission_id).freshness_deadline = 1_800_000_000
+    before = snapshot(chain, project_id, [submission_id])
+
+    def nondet_must_not_run(_prompt):
+        raise AssertionError("deterministic chronology must fail before nondet")
+
+    GL.set_prompt_handler(nondet_must_not_run)
+    with pytest.raises(Revert, match="submission chronology is invalid"):
+        chain.call("resolve_submission", submission_id, sender=SPONSOR)
+
+    assert snapshot(chain, project_id, [submission_id]) == before
+
+
 @pytest.mark.parametrize("elapsed", [INFO_WINDOW, INFO_WINDOW + 1])
 def test_supplement_rejects_the_closed_information_window_without_mutation(chain, elapsed):
     chain.set_now(1_800_000_000)
