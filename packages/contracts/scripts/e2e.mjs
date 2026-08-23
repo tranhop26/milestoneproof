@@ -28,10 +28,8 @@ const FIXTURE = {
 
 const PROJECT_TITLE = "SDK release proof"
 const PROJECT_DESCRIPTION = "Verify a public GenLayer SDK release commit through semantic consensus."
-// GenLayer Studio implements this hosted-development faucet as
-// sim_fundAccount(address, amountWei) and returns its generated transaction hash.
 const STUDIONET_FUNDING_METHOD = "sim_fundAccount"
-const STUDIONET_FUNDING_WEI = 100_000_000_000_000_000_000
+const STUDIONET_FUNDING_AMOUNT = 100
 
 function option(argv, name) {
   const index = argv.indexOf(name)
@@ -53,6 +51,10 @@ function jsonSafe(value) {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, jsonSafe(item)]))
   }
   return value
+}
+
+function optionalTransactionHash(value) {
+  return typeof value === "string" && /^0x[0-9a-fA-F]{64}$/u.test(value) ? value : undefined
 }
 
 function executionError(receipt) {
@@ -119,12 +121,27 @@ export async function runLiveE2e({ env = process.env, argv = process.argv.slice(
   }
 
   const readClient = sdk.createClient({ chain })
+  const balancesBeforeFunding = []
+  for (const actorAddress of addresses) {
+    balancesBeforeFunding.push(integer(await readClient.getBalance({ address: actorAddress }), "actor balance before funding"))
+  }
   const fundingTransactions = []
   for (const actorAddress of addresses) {
-    fundingTransactions.push(assertHash(await readClient.request({
+    const response = await readClient.request({
       method: STUDIONET_FUNDING_METHOD,
-      params: [actorAddress, STUDIONET_FUNDING_WEI],
-    }), "Studionet funding transaction hash"))
+      params: [actorAddress, STUDIONET_FUNDING_AMOUNT],
+    })
+    const transactionHash = optionalTransactionHash(response)
+    if (transactionHash) fundingTransactions.push(transactionHash)
+  }
+  const balancesAfterFunding = []
+  for (const actorAddress of addresses) {
+    balancesAfterFunding.push(integer(await readClient.getBalance({ address: actorAddress }), "actor balance after funding"))
+  }
+  for (let index = 0; index < addresses.length; index += 1) {
+    if (balancesAfterFunding[index] <= 0n || balancesAfterFunding[index] <= balancesBeforeFunding[index]) {
+      throw new Error(`Studionet funding did not increase actor balance: ${addresses[index]}`)
+    }
   }
   const sponsorClient = sdk.createClient({ chain, account: sponsor })
   const builderClient = sdk.createClient({ chain, account: builder })
@@ -263,7 +280,17 @@ export async function runLiveE2e({ env = process.env, argv = process.argv.slice(
       submitEvidence,
       resolveSubmission,
     },
-    readback: jsonSafe({ projectId, submissionId, project, milestone, submission }),
+    readback: jsonSafe({
+      fundingBalances: {
+        before: balancesBeforeFunding,
+        after: balancesAfterFunding,
+      },
+      projectId,
+      submissionId,
+      project,
+      milestone,
+      submission,
+    }),
   }
   await writeJsonAtomically(evidencePath, proof, { immutable: true })
   console.log(`Live contract evidence written: ${evidencePath}`)

@@ -111,6 +111,7 @@ const addresses = ["1", "2", "3"].map((digit) => `0x${digit.repeat(40)}`);
 const hashes = ["a", "b", "c", "d"].map((digit) => `0x${digit.repeat(64)}`);
 let actor = 0;
 let stage = 0;
+const funded = new Set();
 const log = (name) => appendFileSync(process.env.FAKE_CALL_LOG, `${name}\\n`);
 export const studionet = {
   id: 61999,
@@ -129,10 +130,20 @@ export const createAccount = () => {
 export const createClient = ({ account } = {}) => {
   log(`createClient:${account?.address || "read"}`);
   return {
+    getBalance: async ({ address }) => {
+      log(`getBalance:${address}`);
+      if (process.env.FAKE_FUNDING_NO_BALANCE === "YES") return 0n;
+      if (process.env.FAKE_FUNDING_UNCHANGED_POSITIVE === "YES") return 100n;
+      return funded.has(address) ? 100n : 0n;
+    },
     request: async ({ method, params }) => {
       log(`${method}:${params[0]}`);
       if (method !== "sim_fundAccount") throw new Error("unexpected request");
       if (process.env.FAKE_FUNDING_FAILURE === "YES") throw new Error("faucet unavailable");
+      funded.add(params[0]);
+      if (process.env.FAKE_FUNDING_RESPONSE === "TRUE") return true;
+      if (process.env.FAKE_FUNDING_RESPONSE === "OPAQUE") return { accepted: true };
+      if (process.env.FAKE_FUNDING_RESPONSE === "NULL") return null;
       return `0x${"f".repeat(64)}`;
     },
     writeContract: async ({ functionName }) => {
@@ -608,14 +619,43 @@ def test_live_e2e_generates_actors_proves_success_and_unauthorized_error(tmp_pat
     assert evidence["readback"]["project"][6] == "1"
     assert evidence["readback"]["milestone"][7] == "3"
     assert evidence["readback"]["submission"][5] == "1"
+    assert evidence["readback"]["fundingBalances"] == {
+        "before": ["0", "0", "0"],
+        "after": ["100", "100", "100"],
+    }
     assert "private" not in evidence_text.lower()
     assert "secret" not in evidence_text.lower()
     calls = (tmp_path / "calls.log").read_text(encoding="utf-8")
     assert calls.count("createAccount") == 3
     assert calls.count("sim_fundAccount") == 3
+    assert calls.count("getBalance") == 6
     assert "get_project_count" not in calls
     assert "read:get_sponsor_project_count" in calls
     assert "read:get_sponsor_project_ids" in calls
+    assert evidence["transactions"]["funding"] == ["0x" + ("f" * 64)] * 3
+
+
+@pytest.mark.parametrize("response", ["TRUE", "OPAQUE", "NULL"])
+def test_live_e2e_accepts_opaque_funding_response_when_balance_increases(tmp_path, response):
+    fake = _e2e_sdk(tmp_path)
+    evidence_path = tmp_path / "live-contract.json"
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(_manifest_data()), encoding="utf-8")
+    result = _run(E2E, "--manifest", str(manifest_path), env={
+        "NODE_ENV": "test",
+        "MILESTONEPROOF_SDK_MODULE": fake.as_uri(),
+        "FAKE_CALL_LOG": str(tmp_path / "calls.log"),
+        "LIVE_EVIDENCE_PATH": str(evidence_path),
+        "CONFIRM_LIVE_E2E": "YES",
+        "FAKE_FUNDING_RESPONSE": response,
+    })
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    assert evidence["transactions"]["funding"] == []
+    calls = (tmp_path / "calls.log").read_text(encoding="utf-8")
+    assert calls.count("getBalance") == 6
+    assert "write:" in calls
 
 
 @pytest.mark.parametrize(
@@ -665,5 +705,30 @@ def test_live_e2e_funding_failure_prevents_all_contract_writes(tmp_path):
     assert result.returncode != 0
     calls = (tmp_path / "calls.log").read_text(encoding="utf-8")
     assert "sim_fundAccount" in calls
+    assert "write:" not in calls
+    assert not evidence_path.exists()
+
+
+@pytest.mark.parametrize("failure_flag", ["FAKE_FUNDING_NO_BALANCE", "FAKE_FUNDING_UNCHANGED_POSITIVE"])
+def test_live_e2e_opaque_funding_without_balance_increase_prevents_all_contract_writes(tmp_path, failure_flag):
+    fake = _e2e_sdk(tmp_path)
+    evidence_path = tmp_path / "live-contract.json"
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(_manifest_data()), encoding="utf-8")
+    result = _run(E2E, "--manifest", str(manifest_path), env={
+        "NODE_ENV": "test",
+        "MILESTONEPROOF_SDK_MODULE": fake.as_uri(),
+        "FAKE_CALL_LOG": str(tmp_path / "calls.log"),
+        "LIVE_EVIDENCE_PATH": str(evidence_path),
+        "CONFIRM_LIVE_E2E": "YES",
+        "FAKE_FUNDING_RESPONSE": "OPAQUE",
+        failure_flag: "YES",
+    })
+
+    assert result.returncode != 0
+    assert "balance" in result.stderr.lower()
+    calls = (tmp_path / "calls.log").read_text(encoding="utf-8")
+    assert calls.count("sim_fundAccount") == 3
+    assert calls.count("getBalance") == 6
     assert "write:" not in calls
     assert not evidence_path.exists()
