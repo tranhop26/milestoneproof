@@ -63,8 +63,8 @@ function contract(milestoneOverrides: Partial<MilestoneView> = {}): MilestonePro
   }
 }
 
-function provider(account: string): Eip1193Provider {
-  return { request: vi.fn(async ({ method }) => method === "eth_chainId" ? "0xf22f" : [account]) }
+function provider(account: string, chainId = "0xf22f"): Eip1193Provider {
+  return { request: vi.fn(async ({ method }) => method === "eth_chainId" ? chainId : [account]) }
 }
 
 function renderWorkspace(contractOverride = contract(), walletProvider: Eip1193Provider | null = null) {
@@ -125,6 +125,19 @@ describe("ProjectWorkspace", () => {
     await userEvent.click(screen.getByRole("tab", { name: "Evidence" }))
     expect(screen.getByText("Only the frozen builder can submit evidence for this open milestone.")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Submit evidence" })).not.toBeInTheDocument()
+  })
+
+  it.each([BUILDER, STRANGER])("shows wrong-network guidance and suppresses OPEN milestone writes for %s", async (account) => {
+    const openMilestone = contract({ status: "OPEN", currentSubmissionId: "0", submissionCount: 0, deadline: "1700000000" })
+    renderWorkspace(openMilestone, provider(account, "0x1"))
+    await screen.findByRole("heading", { name: "Compiler release" })
+    await userEvent.click(screen.getByRole("tab", { name: "Evidence" }))
+
+    expect(screen.getByText("WRONG_NETWORK")).toBeInTheDocument()
+    expect(screen.getByText("Switch to GenLayer Studionet to continue.")).toBeInTheDocument()
+    expect(screen.queryByText("Only the frozen builder can submit evidence for this open milestone.")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Submit evidence" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Expire milestone" })).not.toBeInTheDocument()
   })
 
   it("lets an unrelated connected wallet expire the current OPEN milestone after its deadline", async () => {

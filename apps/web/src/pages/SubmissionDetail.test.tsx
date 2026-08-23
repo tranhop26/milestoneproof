@@ -16,6 +16,7 @@ const BUILDER = "0x2000000000000000000000000000000000000002" as const
 const STRANGER = "0x3000000000000000000000000000000000000003" as const
 const TX_HASH = `0x${"a".repeat(64)}` as `0x${string}`
 const COMMIT = "0123456789abcdef0123456789abcdef01234567"
+const INFO_WINDOW_SECONDS = 72 * 60 * 60
 
 const EVIDENCE: EvidenceInput = {
   sourceKind: "REPOSITORY",
@@ -145,17 +146,24 @@ describe("SubmissionDetail", () => {
   })
 
   it("offers only a builder supplement for REQUEST_MORE_INFO", async () => {
-    renderDetail(submission("REQUEST_MORE_INFO", { freshnessDeadline: "1900000000" }), BUILDER)
+    renderDetail(submission("REQUEST_MORE_INFO", { resolvedAt: "1800000300", freshnessDeadline: "1800000399" }), BUILDER, 1_800_000_400)
 
     expect(await screen.findByRole("button", { name: "Supplement evidence" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /resolve|retry|resubmit/i })).not.toBeInTheDocument()
   })
 
   it("suppresses supplement after the authoritative information window elapses", async () => {
-    renderDetail(submission("REQUEST_MORE_INFO", { freshnessDeadline: "1800000350" }), BUILDER, 1_800_000_400)
+    renderDetail(submission("REQUEST_MORE_INFO", { resolvedAt: "1800000300", freshnessDeadline: "1900000000" }), BUILDER, 1_800_000_300 + INFO_WINDOW_SECONDS)
 
     expect(await screen.findByText("The information window has elapsed; supplement is suppressed.")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Supplement evidence" })).not.toBeInTheDocument()
+  })
+
+  it("offers RMI expiry at resolvedAt plus 72 hours even when freshnessDeadline is later", async () => {
+    const resolvedAt = 1_800_000_300
+    renderDetail(submission("REQUEST_MORE_INFO", { resolvedAt: String(resolvedAt), freshnessDeadline: "1900000000" }), STRANGER, resolvedAt + INFO_WINDOW_SECONDS)
+
+    expect(await screen.findByRole("button", { name: "Expire milestone" })).toBeEnabled()
   })
 
   it("explains role ownership and exhausted retries instead of exposing invalid actions", async () => {

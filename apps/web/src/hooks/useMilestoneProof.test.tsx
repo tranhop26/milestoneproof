@@ -14,6 +14,7 @@ const SPONSOR = "0x1000000000000000000000000000000000000001" as const
 const BUILDER = "0x2000000000000000000000000000000000000002" as const
 const TX_HASH = `0x${"b".repeat(64)}` as `0x${string}`
 const NOW = 2_000_000_000
+const INFO_WINDOW_SECONDS = 72 * 60 * 60
 const EVIDENCE: EvidenceInput = { sourceKind: "RELEASE", url: "https://github.com/example/compiler/releases/tag/v1.0.0", subjectRef: "github.com/example/compiler", versionRef: "v1.0.0", observedAt: "1900000100" }
 
 function project(overrides: Partial<ProjectView> = {}): ProjectView {
@@ -75,7 +76,7 @@ describe("useMilestoneActions authoritative gates", () => {
     let written = false
     const currentProject = project()
     const priorMilestone = milestone()
-    const priorSubmission = submission({ verdict: "REQUEST_MORE_INFO", resolvedAt: "1999990000", freshnessDeadline: "2100000000" })
+    const priorSubmission = submission({ verdict: "REQUEST_MORE_INFO", resolvedAt: "1999990000", freshnessDeadline: String(NOW - 1) })
     const nextSubmission = submission({ id: "99", digest: "99", revision: 2, verdict: "NONE", evidence: [...priorSubmission.evidence, EVIDENCE], resolutionCount: 0 })
     const adapter = contract({
       project: () => currentProject,
@@ -91,6 +92,47 @@ describe("useMilestoneActions authoritative gates", () => {
 
     expect(result).toMatchObject({ submittedDigest: "99", submission: { id: "99", digest: "99" } })
     expect(hook.result.current.actions.transactionState.phase).toBe("READBACK")
+  })
+
+  it("uses resolvedAt plus the contract info window instead of freshnessDeadline for RMI expiry", async () => {
+    const currentProject = project()
+    const currentMilestone = milestone()
+    const currentSubmission = submission({
+      verdict: "REQUEST_MORE_INFO",
+      resolvedAt: String(NOW - INFO_WINDOW_SECONDS + 1),
+      freshnessDeadline: String(NOW - 1),
+    })
+    const adapter = contract({ project: () => currentProject, milestone: () => currentMilestone, submission: () => currentSubmission })
+    const hook = renderActions(adapter)
+    await connected(hook)
+
+    await expect(hook.result.current.actions.mutateAsync({ kind: "expire", project: currentProject, milestone: currentMilestone, submission: currentSubmission })).rejects.toThrow(/eligible for expiry/i)
+    expect(adapter.writes.expireMilestone).not.toHaveBeenCalled()
+  })
+
+  it("reads the authoritative current submission and rejects a stale expiry revision before writing", async () => {
+    const currentProject = project()
+    const currentMilestone = milestone({ currentSubmissionId: "99", submissionCount: 2 })
+    const staleSubmission = submission({ verdict: "REJECTED" })
+    const currentSubmission = submission({
+      id: "99",
+      digest: "99",
+      revision: 2,
+      verdict: "REQUEST_MORE_INFO",
+      resolvedAt: String(NOW - 1),
+      freshnessDeadline: String(NOW - 1),
+    })
+    const adapter = contract({
+      project: () => currentProject,
+      milestone: () => currentMilestone,
+      submission: (id) => id === "99" ? currentSubmission : staleSubmission,
+    })
+    const hook = renderActions(adapter)
+    await connected(hook)
+
+    await expect(hook.result.current.actions.mutateAsync({ kind: "expire", project: currentProject, milestone: currentMilestone, submission: staleSubmission })).rejects.toThrow(/authoritative current submission/i)
+    expect(adapter.reads.submission).toHaveBeenCalledWith("99")
+    expect(adapter.writes.expireMilestone).not.toHaveBeenCalled()
   })
 
   it.each([

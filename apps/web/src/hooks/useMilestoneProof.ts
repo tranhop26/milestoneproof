@@ -24,6 +24,8 @@ import {
 } from "../lib/transaction"
 import { useWallet } from "../lib/wallet"
 
+const INFO_WINDOW_SECONDS = 72 * 60 * 60
+
 export const queryKeys = {
   config: () => ["milestoneProof", "config"] as const,
   project: (projectId: string) => ["milestoneProof", "project", projectId] as const,
@@ -258,12 +260,21 @@ function assertActionAllowed(action: MilestoneAction, actor: string, now: number
   const isBuilder = actor === project.builder
   const isParty = isBuilder || actor === project.sponsor
   if (action.kind === "expire") {
+    if (action.submission && action.submission.id !== milestone.currentSubmissionId) {
+      throw new Error("Submission is not the authoritative current submission.")
+    }
+    if (milestone.status === "SUBMITTED" && (!submission
+      || submission.id !== milestone.currentSubmissionId
+      || submission.projectId !== project.id
+      || submission.milestoneIndex !== milestone.index)) {
+      throw new Error("Submission is not the authoritative current submission.")
+    }
     const expiryAllowed = milestone.status === "OPEN"
       ? now >= Number(milestone.deadline)
       : milestone.status === "SUBMITTED" && submission?.verdict === "REJECTED"
         ? now >= Number(milestone.deadline)
         : milestone.status === "SUBMITTED" && submission?.verdict === "REQUEST_MORE_INFO"
-          ? now >= Number(submission.freshnessDeadline)
+          ? now >= Number(submission.resolvedAt) + INFO_WINDOW_SECONDS
           : false
     if (!expiryAllowed) throw new Error("Milestone is not eligible for expiry.")
     return
@@ -302,7 +313,7 @@ function assertActionAllowed(action: MilestoneAction, actor: string, now: number
     return
   }
   if (submission.verdict !== "REQUEST_MORE_INFO") throw new Error("Current submission does not request more information.")
-  if (now >= Number(submission.freshnessDeadline)) throw new Error("Information window has elapsed.")
+  if (now >= Number(submission.resolvedAt) + INFO_WINDOW_SECONDS) throw new Error("Information window has elapsed.")
   if (submission.evidence.length + action.evidence.length > 4) throw new Error("Evidence item limit would be exceeded.")
 }
 
@@ -315,7 +326,7 @@ async function loadAuthoritativeActionContext(
     contract.reads.milestone(action.project.id, action.milestone.index),
   ])
   if (action.kind === "submit") return { project, milestone }
-  const submissionId = action.submission?.id ?? milestone.currentSubmissionId
+  const submissionId = milestone.currentSubmissionId
   const submission = submissionId && submissionId !== "0"
     ? await contract.reads.submission(submissionId)
     : undefined

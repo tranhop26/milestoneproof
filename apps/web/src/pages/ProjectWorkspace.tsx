@@ -44,6 +44,7 @@ function WorkspaceContent({ contract, project, now }: { contract: MilestoneProof
   const submissions = milestones.filter(({ currentSubmissionId }) => currentSubmissionId !== "0")
   const currentMilestone = milestones[project.currentMilestone]
   const walletReady = wallet.status === "CONNECTED"
+  const wrongNetwork = wallet.status === "WRONG_NETWORK"
   const isBuilder = walletReady && wallet.account?.toLowerCase() === project.builder
   const canExpireOpen = walletReady
     && project.status === "ACTIVE"
@@ -83,8 +84,9 @@ function WorkspaceContent({ contract, project, now }: { contract: MilestoneProof
 
       <section aria-label={`${tab} panel`} className="tab-panel" role="tabpanel">
         {tab === "Overview" && <OverviewPanel milestones={milestones} />}
-        {tab === "Evidence" && currentMilestone?.status === "OPEN" && isBuilder && <EvidenceEditor allowedSources={currentMilestone.allowedSources} disabled={actions.isPending} onSubmit={submitEvidence} submitLabel="Submit evidence" />}
-        {tab === "Evidence" && currentMilestone?.status === "OPEN" && !isBuilder && <div className="truthful-empty"><FileCheck2 size={20} /><h2>Builder action required</h2><p>Only the frozen builder can submit evidence for this open milestone.</p></div>}
+        {tab === "Evidence" && currentMilestone?.status === "OPEN" && wrongNetwork && <div className="truthful-empty"><span className="wrong-network-chip">WRONG_NETWORK</span><h2>Studionet required</h2><p className="network-guidance">Switch to GenLayer Studionet to continue.</p></div>}
+        {tab === "Evidence" && currentMilestone?.status === "OPEN" && !wrongNetwork && isBuilder && <EvidenceEditor allowedSources={currentMilestone.allowedSources} disabled={actions.isPending} onSubmit={submitEvidence} submitLabel="Submit evidence" />}
+        {tab === "Evidence" && currentMilestone?.status === "OPEN" && !wrongNetwork && !isBuilder && <div className="truthful-empty"><FileCheck2 size={20} /><h2>Builder action required</h2><p>Only the frozen builder can submit evidence for this open milestone.</p></div>}
         {tab === "Evidence" && canExpireOpen && <div className="permissionless-expiry">{actionError && <div className="form-alert" role="alert">{actionError}</div>}<p>The frozen deadline has elapsed. Any connected Studionet wallet can close this milestone.</p><button className="secondary-button" disabled={actions.isPending} onClick={() => void expireCurrentMilestone()} type="button">Expire milestone</button></div>}
         {tab === "Evidence" && currentMilestone?.status !== "OPEN" && <div className="truthful-empty"><FileCheck2 size={20} /><h2>Evidence belongs to submissions</h2><p>{submissions.length ? "Open a submission to inspect its authoritative evidence readback." : "No milestone currently references an on-chain submission."}</p></div>}
         {tab === "Submissions" && (submissions.length ? <div className="submission-index">{submissions.map((milestone) => <Link className="submission-row" key={milestone.currentSubmissionId} to={`/submissions/${milestone.currentSubmissionId}`}><span>Milestone {milestone.index + 1}</span><strong>Submission #{milestone.currentSubmissionId}</strong><StatusBadge status={milestone.status} /></Link>)}</div> : <div className="truthful-empty"><h2>No submissions yet</h2><p>The contract has not recorded a submission for this project.</p></div>)}

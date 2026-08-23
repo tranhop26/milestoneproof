@@ -88,13 +88,14 @@ function SubmissionActions({ project, milestone, submission, now, onAction }: Su
     && project.currentMilestone === milestone.index
     && milestone.status === "SUBMITTED"
     && milestone.currentSubmissionId === submission.id
-  const informationWindowOpen = now < Number(submission.freshnessDeadline)
+  const informationWindowEndsAt = Number(submission.resolvedAt) + INFO_WINDOW_SECONDS
+  const informationWindowOpen = now < informationWindowEndsAt
   const retryReady = now >= Number(submission.nextRetryAt)
   const attemptsRemain = milestone.submissionCount < 3
   const beforeDeadline = now < Number(milestone.deadline)
   const canExpire = walletReady && activeCurrentSubmission && (
     (submission.verdict === "REJECTED" && !beforeDeadline)
-    || (submission.verdict === "REQUEST_MORE_INFO" && now >= Number(submission.resolvedAt) + INFO_WINDOW_SECONDS)
+    || (submission.verdict === "REQUEST_MORE_INFO" && now >= informationWindowEndsAt)
   )
 
   const run = async (action: Parameters<typeof onAction.mutateAsync>[0]) => {
