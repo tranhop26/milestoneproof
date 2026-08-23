@@ -1,6 +1,7 @@
 import { Check, Circle, ExternalLink } from "lucide-react"
 
 import type { TransactionPhase, TransactionState } from "../lib/transaction"
+import { STUDIONET_EXPLORER_TRANSACTION_URL } from "../lib/genlayer"
 import { StatusBadge } from "./StatusBadge"
 
 const HAPPY_PATH: TransactionPhase[] = [
@@ -18,9 +19,10 @@ export interface TransactionPanelProps {
 
 export function TransactionPanel({
   state,
-  explorerBaseUrl = "https://explorer-studio.genlayer.com/transactions",
+  explorerBaseUrl = STUDIONET_EXPLORER_TRANSACTION_URL,
 }: TransactionPanelProps) {
-  const currentIndex = HAPPY_PATH.indexOf(state.phase)
+  const progressPhase = state.phase === "ERROR" ? state.progressPhase : state.phase
+  const currentIndex = progressPhase ? HAPPY_PATH.indexOf(progressPhase) : -1
   return (
     <section aria-labelledby="transaction-title" className="transaction-panel">
       <div className="panel-heading">

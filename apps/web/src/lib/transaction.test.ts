@@ -19,7 +19,7 @@ function successfulAdapter<T>(readback: T): TransactionAdapter<T> {
 
 describe("runWriteAndReadback", () => {
   it("does not report success for a finalized execution error", async () => {
-    const states: string[] = []
+    const states: Array<{ phase: string; progressPhase?: string }> = []
     const adapter: TransactionAdapter<never> = {
       ...successfulAdapter(undefined as never),
       waitForFinalized: async () => ({
@@ -28,11 +28,12 @@ describe("runWriteAndReadback", () => {
       }),
     }
 
-    await expect(runWriteAndReadback(adapter, (state) => states.push(state.phase)))
+    await expect(runWriteAndReadback(adapter, (state) => states.push(state)))
       .rejects.toMatchObject({ code: "EXECUTION_FAILED" })
 
-    expect(states).toEqual(["AWAITING_SIGNATURE", "PENDING", "FINALIZED", "ERROR"])
-    expect(states).not.toContain("SUCCESS")
+    expect(states.map(({ phase }) => phase)).toEqual(["AWAITING_SIGNATURE", "PENDING", "FINALIZED", "ERROR"])
+    expect(states.at(-1)).toMatchObject({ phase: "ERROR", progressPhase: "FINALIZED" })
+    expect(states.map(({ phase }) => phase)).not.toContain("SUCCESS")
   })
 
   it("reports a disconnected wallet without requesting a signature", async () => {
@@ -109,7 +110,7 @@ describe("runWriteAndReadback", () => {
       "SUCCESS",
       "ERROR",
     ])
-    expect(states.at(-1)).toMatchObject({ phase: "ERROR", code: "READBACK_FAILED" })
+    expect(states.at(-1)).toMatchObject({ phase: "ERROR", code: "READBACK_FAILED", progressPhase: "SUCCESS" })
   })
 
   it("clears a draft only after readback is confirmed", async () => {
@@ -131,5 +132,22 @@ describe("runWriteAndReadback", () => {
       onReadbackConfirmed: () => { draft.cleared = true },
     })
     expect(draft.cleared).toBe(true)
+  })
+
+  it("turns a failed local readback-confirmation callback into a consistent error state", async () => {
+    const states: Array<{ phase: string; code?: string; progressPhase?: string }> = []
+
+    await expect(runWriteAndReadback(
+      successfulAdapter({ projectId: "42" }),
+      (state) => states.push(state),
+      { onReadbackConfirmed: () => { throw new Error("draft storage unavailable") } },
+    )).rejects.toMatchObject({ code: "LOCAL_CONFIRMATION_FAILED" })
+
+    expect(states.at(-1)).toMatchObject({
+      phase: "ERROR",
+      code: "LOCAL_CONFIRMATION_FAILED",
+      progressPhase: "SUCCESS",
+    })
+    expect(states.map(({ phase }) => phase)).not.toContain("READBACK")
   })
 })

@@ -1,9 +1,8 @@
-import { ArrowRight, Blocks, Github, ShieldCheck } from "lucide-react"
+import { ArrowRight, Blocks, Circle, Github, ShieldCheck } from "lucide-react"
 import { useState } from "react"
 import { Navigate, Route, Routes } from "react-router-dom"
 
 import { AppShell } from "./components/AppShell"
-import { StatusBadge } from "./components/StatusBadge"
 import { useWallet } from "./lib/wallet"
 
 function WalletControl() {
@@ -49,14 +48,14 @@ function Landing() {
             <a className="secondary-button" href="/projects">View projects</a>
           </div>
         </div>
-        <div aria-label="Verification flow" className="verification-card">
-          <div className="verification-header"><span>Verification flow</span><StatusBadge status="ACTIVE" /></div>
+        <section aria-label="How MilestoneProof works" className="verification-card">
+          <div className="verification-header"><span>How it works</span><span className="illustrative-label">Illustrative flow</span></div>
           <ol className="flow-list">
-            <li><span>01</span><div><strong>Criteria frozen</strong><small>Sponsor commits the scope</small></div><CheckMark /></li>
-            <li><span>02</span><div><strong>Evidence submitted</strong><small>Builder binds immutable sources</small></div><CheckMark /></li>
-            <li><span>03</span><div><strong>Validator consensus</strong><small>Semantic decision on GenLayer</small></div><div className="pulse-dot" /></li>
+            <li><span>01</span><div><strong>Criteria frozen</strong><small>Sponsor commits the scope</small></div><Circle aria-hidden="true" className="flow-neutral" size={14} /></li>
+            <li><span>02</span><div><strong>Evidence submitted</strong><small>Builder binds immutable sources</small></div><Circle aria-hidden="true" className="flow-neutral" size={14} /></li>
+            <li><span>03</span><div><strong>Validator consensus</strong><small>Semantic decision on GenLayer</small></div><Circle aria-hidden="true" className="flow-neutral" size={14} /></li>
           </ol>
-        </div>
+        </section>
       </section>
 
       <section className="trust-grid">
@@ -66,10 +65,6 @@ function Landing() {
       </section>
     </div>
   )
-}
-
-function CheckMark() {
-  return <span aria-label="Complete" className="check-mark">✓</span>
 }
 
 function RoutePlaceholder({ title, detail }: { title: string; detail: string }) {

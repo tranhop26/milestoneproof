@@ -58,6 +58,7 @@ button { color: inherit; }
 .hero-actions { display: flex; gap: 10px; margin-top: 30px; }
 .verification-card { align-self: center; overflow: hidden; border: 1px solid #2c2c30; border-radius: 12px; background: rgba(10,10,12,.74); box-shadow: 0 24px 56px rgba(0,0,0,.3); }
 .verification-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #252529; font-size: 12px; color: #d4d4d8; }
+.illustrative-label { padding: 4px 7px; border: 1px solid #3f3f46; border-radius: 999px; color: #a1a1aa; background: rgba(113,113,122,.08); font-size: 9px; font-weight: 650; text-transform: uppercase; }
 .flow-list { list-style: none; margin: 0; padding: 8px 16px; }
 .flow-list li { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 10px; min-height: 66px; border-bottom: 1px solid #202023; }
 .flow-list li:last-child { border-bottom: 0; }
@@ -65,8 +66,7 @@ button { color: inherit; }
 .flow-list strong, .flow-list small { display: block; }
 .flow-list strong { color: #e4e4e7; font-size: 12px; font-weight: 570; }
 .flow-list small { margin-top: 4px; color: #71717a; font-size: 10px; }
-.check-mark { display: grid; width: 20px; height: 20px; place-items: center; border-radius: 50%; color: #34d399; background: rgba(52,211,153,.08); font-size: 11px; }
-.pulse-dot { width: 7px; height: 7px; margin: 6px; border-radius: 50%; background: #60a5fa; box-shadow: 0 0 0 5px rgba(96,165,250,.08); animation: pulse 1.8s infinite; }
+.flow-neutral { margin: 3px; color: #71717a; }
 .trust-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
 .trust-grid article { padding: 23px; border: 1px solid #242428; border-radius: 12px; background: #111113; }
 .trust-grid article > svg { color: #34d399; }
@@ -100,7 +100,6 @@ button { color: inherit; }
 .sheet-header { display: flex; align-items: center; justify-content: space-between; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
-@keyframes pulse { 50% { opacity: .45; transform: scale(.8); } }
 
 @media (max-width: 900px) {
   .desktop-sidebar { display: none; }

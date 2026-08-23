@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
 } from "react"
@@ -66,8 +67,10 @@ export function WalletProvider({ children, provider: providerOverride }: WalletP
   const [account, setAccount] = useState<`0x${string}` | null>(null)
   const [chainId, setChainId] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
+  const connectionVersion = useRef(0)
 
   const clearConnection = useCallback(() => {
+    connectionVersion.current += 1
     if (provider) clearWriteClientCache(provider)
     setAccount(null)
     setConnecting(false)
@@ -75,38 +78,39 @@ export function WalletProvider({ children, provider: providerOverride }: WalletP
 
   useEffect(() => {
     if (!provider) {
+      connectionVersion.current += 1
       setAccount(null)
       setChainId(null)
       return
     }
 
     let active = true
-    let acceptInitialSnapshot = true
+    const snapshotVersion = connectionVersion.current
     void Promise.all([
       provider.request({ method: "eth_accounts" }),
       provider.request({ method: "eth_chainId" }),
     ]).then(([accounts, activeChainId]) => {
-      if (!active || !acceptInitialSnapshot) return
+      if (!active || snapshotVersion !== connectionVersion.current) return
       setAccount(firstAccount(accounts))
       setChainId(normalizeChainId(activeChainId))
     }).catch(() => {
-      if (active) clearConnection()
+      if (active && snapshotVersion === connectionVersion.current) clearConnection()
     })
 
     const handleAccountsChanged = (...args: unknown[]) => {
-      acceptInitialSnapshot = false
+      connectionVersion.current += 1
       clearWriteClientCache(provider)
       const nextAccount = firstAccount(args[0])
       setAccount(nextAccount)
-      if (!nextAccount) setConnecting(false)
+      setConnecting(false)
     }
     const handleChainChanged = (...args: unknown[]) => {
-      acceptInitialSnapshot = false
+      connectionVersion.current += 1
       clearWriteClientCache(provider)
       setChainId(normalizeChainId(args[0]))
+      setConnecting(false)
     }
     const handleDisconnect = () => {
-      acceptInitialSnapshot = false
       setChainId(null)
       clearConnection()
     }
@@ -116,6 +120,7 @@ export function WalletProvider({ children, provider: providerOverride }: WalletP
     provider.on?.("disconnect", handleDisconnect)
     return () => {
       active = false
+      connectionVersion.current += 1
       provider.removeListener?.("accountsChanged", handleAccountsChanged)
       provider.removeListener?.("chainChanged", handleChainChanged)
       provider.removeListener?.("disconnect", handleDisconnect)
@@ -126,6 +131,8 @@ export function WalletProvider({ children, provider: providerOverride }: WalletP
     if (!provider) {
       throw new TransactionLifecycleError("WALLET_DISCONNECTED", "No injected wallet was found.")
     }
+    const requestVersion = connectionVersion.current + 1
+    connectionVersion.current = requestVersion
     setConnecting(true)
     try {
       const [accounts, activeChainId] = await Promise.all([
@@ -136,11 +143,12 @@ export function WalletProvider({ children, provider: providerOverride }: WalletP
       if (!nextAccount) {
         throw new TransactionLifecycleError("WALLET_DISCONNECTED", "The wallet did not provide an account.")
       }
+      if (requestVersion !== connectionVersion.current) return
       clearWriteClientCache(provider)
       setAccount(nextAccount)
       setChainId(normalizeChainId(activeChainId))
     } finally {
-      setConnecting(false)
+      if (requestVersion === connectionVersion.current) setConnecting(false)
     }
   }, [provider])
 

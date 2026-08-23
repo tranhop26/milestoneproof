@@ -1,5 +1,5 @@
 import { FolderKanban, Home, Menu, Plus, ShieldCheck, X } from "lucide-react"
-import { useEffect, useState, type PropsWithChildren, type ReactNode } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PropsWithChildren, type ReactNode } from "react"
 import { NavLink } from "react-router-dom"
 
 const navigation = [
@@ -42,6 +42,21 @@ export interface AppShellProps extends PropsWithChildren {
 
 export function AppShell({ actions, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const wasMobileOpen = useRef(false)
+
+  useEffect(() => {
+    if (mobileOpen) {
+      wasMobileOpen.current = true
+      closeButtonRef.current?.focus()
+      return
+    }
+    if (wasMobileOpen.current) {
+      wasMobileOpen.current = false
+      menuButtonRef.current?.focus()
+    }
+  }, [mobileOpen])
 
   useEffect(() => {
     if (!mobileOpen) return
@@ -51,6 +66,23 @@ export function AppShell({ actions, children }: AppShellProps) {
     window.addEventListener("keydown", closeOnEscape)
     return () => window.removeEventListener("keydown", closeOnEscape)
   }, [mobileOpen])
+
+  const trapSheetFocus = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Tab") return
+    const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ))
+    const first = focusable[0]
+    const last = focusable.at(-1)
+    if (!first || !last) return
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -66,9 +98,12 @@ export function AppShell({ actions, children }: AppShellProps) {
       <div className="app-frame">
         <header className="topbar">
           <button
+            aria-controls="mobile-navigation"
+            aria-expanded={mobileOpen}
             aria-label="Open navigation"
             className="icon-button mobile-menu-button"
             onClick={() => setMobileOpen(true)}
+            ref={menuButtonRef}
             type="button"
           >
             <Menu aria-hidden="true" size={20} />
@@ -85,6 +120,8 @@ export function AppShell({ actions, children }: AppShellProps) {
             aria-label="Navigation"
             aria-modal="true"
             className="mobile-sheet"
+            id="mobile-navigation"
+            onKeyDown={trapSheetFocus}
             onMouseDown={(event) => event.stopPropagation()}
             role="dialog"
           >
@@ -94,6 +131,7 @@ export function AppShell({ actions, children }: AppShellProps) {
                 aria-label="Close navigation"
                 className="icon-button"
                 onClick={() => setMobileOpen(false)}
+                ref={closeButtonRef}
                 type="button"
               >
                 <X aria-hidden="true" size={20} />

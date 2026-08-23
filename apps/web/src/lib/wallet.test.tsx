@@ -14,10 +14,12 @@ class FakeProvider implements Eip1193Provider {
   chainId = STUDIONET_CHAIN_ID
   switchChangesChain = true
   initialAccountsRequest?: Promise<unknown>
+  connectAccountsRequest?: Promise<unknown>
   private listeners = new Map<string, Set<(...args: unknown[]) => void>>()
 
   async request({ method }: { method: string; params?: unknown[] | object }): Promise<unknown> {
     if (method === "eth_accounts" && this.initialAccountsRequest) return this.initialAccountsRequest
+    if (method === "eth_requestAccounts" && this.connectAccountsRequest) return this.connectAccountsRequest
     if (method === "eth_requestAccounts" || method === "eth_accounts") return [...this.accounts]
     if (method === "eth_chainId") return this.chainId
     if (method === "wallet_switchEthereumChain") {
@@ -160,5 +162,39 @@ describe("WalletProvider", () => {
     await act(async () => { resolveInitialAccounts(provider.accounts) })
 
     expect(result.current).toMatchObject({ status: "DISCONNECTED", account: null })
+  })
+
+  it("does not restore a deferred manual connection after provider disconnect", async () => {
+    let resolveConnect: (accounts: string[]) => void = () => undefined
+    const provider = new FakeProvider()
+    provider.connectAccountsRequest = new Promise((resolve) => { resolveConnect = resolve })
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <WalletProvider provider={provider}>{children}</WalletProvider>
+    )
+    const { result } = renderHook(() => useWallet(), { wrapper })
+
+    let connection!: Promise<void>
+    act(() => { connection = result.current.connect() })
+    act(() => provider.emit("disconnect"))
+    await act(async () => { resolveConnect(["0x1111111111111111111111111111111111111111"]); await connection })
+
+    expect(result.current).toMatchObject({ status: "DISCONNECTED", account: null, chainId: null })
+  })
+
+  it("does not overwrite a newer accountsChanged value with a deferred manual connection", async () => {
+    let resolveConnect: (accounts: string[]) => void = () => undefined
+    const provider = new FakeProvider()
+    provider.connectAccountsRequest = new Promise((resolve) => { resolveConnect = resolve })
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <WalletProvider provider={provider}>{children}</WalletProvider>
+    )
+    const { result } = renderHook(() => useWallet(), { wrapper })
+
+    let connection!: Promise<void>
+    act(() => { connection = result.current.connect() })
+    act(() => provider.emit("accountsChanged", ["0x2222222222222222222222222222222222222222"]))
+    await act(async () => { resolveConnect(["0x1111111111111111111111111111111111111111"]); await connection })
+
+    expect(result.current.account).toBe("0x2222222222222222222222222222222222222222")
   })
 })

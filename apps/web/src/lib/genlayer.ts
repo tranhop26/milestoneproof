@@ -9,6 +9,8 @@ export interface Eip1193Provider {
 
 export type GenLayerClient = ReturnType<typeof createClient>
 
+export const STUDIONET_EXPLORER_TRANSACTION_URL = "https://explorer-studio.genlayer.com/tx"
+
 let accountlessClient: GenLayerClient | undefined
 let writeClients = new WeakMap<Eip1193Provider, Map<string, GenLayerClient>>()
 

@@ -13,10 +13,14 @@ export type TransactionErrorCode =
   | "WRONG_NETWORK"
   | "EXECUTION_FAILED"
   | "READBACK_FAILED"
+  | "LOCAL_CONFIRMATION_FAILED"
   | "RPC_ERROR"
+
+export type TransactionProgressPhase = Exclude<TransactionPhase, "DISCONNECTED" | "ERROR">
 
 export interface TransactionState {
   phase: TransactionPhase
+  progressPhase?: TransactionProgressPhase
   hash?: `0x${string}`
   code?: TransactionErrorCode
   message: string
@@ -97,7 +101,7 @@ export async function runWriteAndReadback<TReadback>(
     hash = await adapter.submit()
   } catch (error) {
     const normalized = normalizeSubmissionError(error)
-    onState({ phase: "ERROR", code: normalized.code, message: normalized.message })
+    onState({ phase: "ERROR", progressPhase: "AWAITING_SIGNATURE", code: normalized.code, message: normalized.message })
     throw normalized
   }
 
@@ -108,7 +112,7 @@ export async function runWriteAndReadback<TReadback>(
     execution = await adapter.waitForFinalized(hash)
   } catch (error) {
     const normalized = new TransactionLifecycleError("RPC_ERROR", messageFrom(error), { cause: error })
-    onState({ phase: "ERROR", hash, code: normalized.code, message: normalized.message })
+    onState({ phase: "ERROR", progressPhase: "PENDING", hash, code: normalized.code, message: normalized.message })
     throw normalized
   }
 
@@ -118,7 +122,7 @@ export async function runWriteAndReadback<TReadback>(
       "EXECUTION_FAILED",
       execution.error || "The contract rejected this transaction.",
     )
-    onState({ phase: "ERROR", hash, code: normalized.code, message: normalized.message })
+    onState({ phase: "ERROR", progressPhase: "FINALIZED", hash, code: normalized.code, message: normalized.message })
     throw normalized
   }
 
@@ -133,11 +137,21 @@ export async function runWriteAndReadback<TReadback>(
       "Execution succeeded, but authoritative readback could not be confirmed.",
       { cause: error },
     )
-    onState({ phase: "ERROR", hash, code: normalized.code, message: normalized.message })
+    onState({ phase: "ERROR", progressPhase: "SUCCESS", hash, code: normalized.code, message: normalized.message })
     throw normalized
   }
 
+  try {
+    options.onReadbackConfirmed?.(readback)
+  } catch (error) {
+    const normalized = new TransactionLifecycleError(
+      "LOCAL_CONFIRMATION_FAILED",
+      "Contract readback succeeded, but the local confirmation update failed.",
+      { cause: error },
+    )
+    onState({ phase: "ERROR", progressPhase: "SUCCESS", hash, code: normalized.code, message: normalized.message })
+    throw normalized
+  }
   onState({ phase: "READBACK", hash, message: "Authoritative contract readback confirmed." })
-  options.onReadbackConfirmed?.(readback)
   return readback
 }
