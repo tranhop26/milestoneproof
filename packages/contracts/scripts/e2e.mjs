@@ -1,0 +1,235 @@
+import { randomUUID } from "node:crypto"
+import { readFile } from "node:fs/promises"
+import { resolve } from "node:path"
+
+import {
+  ROOT,
+  applyLocalEnv,
+  assertAddress,
+  assertHash,
+  assertSuccessfulFinalized,
+  chainFor,
+  isMain,
+  loadSdk,
+  redactError,
+  resolveNetwork,
+  writeJsonAtomically,
+} from "./lib.mjs"
+
+const FIXTURE = {
+  sourceKind: "REPOSITORY",
+  url: "https://github.com/genlayerlabs/genlayer-js/commit/573e6bbc9c3aa7d3e40c37505d0a83a1ab1182c1",
+  subjectRef: "github.com/genlayerlabs/genlayer-js",
+  versionRef: "573e6bbc9c3aa7d3e40c37505d0a83a1ab1182c1",
+  criterion: "The public genlayerlabs/genlayer-js repository contains commit 573e6bbc9c3aa7d3e40c37505d0a83a1ab1182c1 for release v1.1.8.",
+}
+
+function option(argv, name) {
+  const index = argv.indexOf(name)
+  if (index < 0 || !argv[index + 1]) throw new Error(`${name} is required`)
+  return argv[index + 1]
+}
+
+function integer(value, label) {
+  if (typeof value === "bigint" && value >= 0n) return value
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return BigInt(value)
+  if (typeof value === "string" && /^(0|[1-9][0-9]*)$/u.test(value)) return BigInt(value)
+  throw new Error(`${label} is not a non-negative integer`)
+}
+
+function jsonSafe(value) {
+  if (typeof value === "bigint") return value.toString()
+  if (Array.isArray(value)) return value.map(jsonSafe)
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, jsonSafe(item)]))
+  }
+  return value
+}
+
+function executionError(receipt) {
+  return receipt?.consensus_data?.leader_receipt?.find((item) => item?.error)?.error || "Contract rejected the write"
+}
+
+async function wait(client, sdk, hash, expected) {
+  const receipt = await client.waitForTransactionReceipt({
+    hash,
+    status: sdk.TransactionStatus.FINALIZED,
+    interval: 5_000,
+    retries: 240,
+  })
+  assertSuccessfulFinalized(receipt, expected)
+  return receipt
+}
+
+async function successfulWrite(client, sdk, input) {
+  const hash = assertHash(await client.writeContract(input))
+  await wait(client, sdk, hash, sdk.ExecutionResult.FINISHED_WITH_RETURN)
+  return {
+    hash,
+    transactionStatus: "FINALIZED",
+    executionResult: "FINISHED_WITH_RETURN",
+  }
+}
+
+async function rejectedWrite(client, sdk, input) {
+  const hash = assertHash(await client.writeContract(input))
+  const receipt = await wait(client, sdk, hash, sdk.ExecutionResult.FINISHED_WITH_ERROR)
+  return {
+    hash,
+    transactionStatus: "FINALIZED",
+    executionResult: "FINISHED_WITH_ERROR",
+    error: executionError(receipt),
+  }
+}
+
+export async function runLiveE2e({ env = process.env, argv = process.argv.slice(2) } = {}) {
+  await applyLocalEnv(env)
+  if (env.CONFIRM_LIVE_E2E !== "YES") {
+    throw new Error("Live E2E refused: set CONFIRM_LIVE_E2E=YES only after action-time confirmation")
+  }
+
+  const manifestFile = resolve(option(argv, "--manifest"))
+  const manifest = JSON.parse(await readFile(manifestFile, "utf8"))
+  if (manifest.network !== "studionet") throw new Error("Live E2E supports Studionet only")
+  if (manifest.classification !== "INTENTIONALLY_FROZEN" || manifest.verification?.sourceMatches !== true) {
+    throw new Error("Manifest must describe a source-verified INTENTIONALLY_FROZEN deployment")
+  }
+  const contractAddress = assertAddress(manifest.contractAddress, "manifest contract address")
+  const network = resolveNetwork({ ...env, GENLAYER_NETWORK: manifest.network })
+  const sdk = await loadSdk(env)
+  const chain = chainFor(sdk, network)
+
+  const sponsor = sdk.createAccount()
+  const builder = sdk.createAccount()
+  const stranger = sdk.createAccount()
+  const addresses = [sponsor.address, builder.address, stranger.address].map((value) => assertAddress(value, "generated actor address"))
+  if (new Set(addresses.map((value) => value.toLowerCase())).size !== 3) {
+    throw new Error("Generated actors are not distinct")
+  }
+
+  const readClient = sdk.createClient({ chain })
+  for (const actorAddress of addresses) {
+    await readClient.request({ method: "sim_fundAccount", params: [actorAddress, 100] })
+  }
+  const sponsorClient = sdk.createClient({ chain, account: sponsor })
+  const builderClient = sdk.createClient({ chain, account: builder })
+  const strangerClient = sdk.createClient({ chain, account: stranger })
+
+  const deadline = BigInt(Math.floor(Date.now() / 1_000) + (7 * 24 * 60 * 60))
+  const createProject = await successfulWrite(sponsorClient, sdk, {
+    account: sponsor,
+    address: contractAddress,
+    functionName: "create_project",
+    args: [
+      builder.address,
+      "SDK release proof",
+      "Verify a public GenLayer SDK release commit through semantic consensus.",
+      [{
+        title: "Verify v1.1.8",
+        criteria: [FIXTURE.criterion],
+        allowed_sources: [FIXTURE.sourceKind],
+        deadline,
+      }],
+      `e2e-project:${randomUUID()}`,
+    ],
+    value: 0n,
+  })
+
+  const projectId = integer(await readClient.readContract({
+    address: contractAddress,
+    functionName: "get_project_count",
+    args: [],
+  }), "project id")
+  if (projectId === 0n) throw new Error("create_project did not produce a project")
+  const openMilestone = await readClient.readContract({
+    address: contractAddress,
+    functionName: "get_milestone",
+    args: [projectId, 0],
+  })
+  if (!Array.isArray(openMilestone) || integer(openMilestone[7], "milestone state") !== 1n) {
+    throw new Error("Created milestone is not OPEN")
+  }
+  const observedAt = integer(openMilestone[8], "milestone opened_at")
+  const evidence = [[
+    FIXTURE.sourceKind,
+    FIXTURE.url,
+    FIXTURE.subjectRef,
+    FIXTURE.versionRef,
+    observedAt,
+  ]]
+
+  const unauthorizedSubmission = await rejectedWrite(strangerClient, sdk, {
+    account: stranger,
+    address: contractAddress,
+    functionName: "submit_evidence",
+    args: [projectId, 0, evidence, `e2e-unauthorized:${randomUUID()}`],
+    value: 0n,
+  })
+
+  const submitEvidence = await successfulWrite(builderClient, sdk, {
+    account: builder,
+    address: contractAddress,
+    functionName: "submit_evidence",
+    args: [projectId, 0, evidence, `e2e-submission:${randomUUID()}`],
+    value: 0n,
+  })
+  const submittedMilestone = await readClient.readContract({
+    address: contractAddress,
+    functionName: "get_milestone",
+    args: [projectId, 0],
+  })
+  const submissionId = integer(submittedMilestone?.[10], "submission id")
+  if (integer(submittedMilestone?.[7], "submitted milestone state") !== 2n || submissionId === 0n) {
+    throw new Error("submit_evidence did not produce a SUBMITTED milestone")
+  }
+
+  const resolveSubmission = await successfulWrite(sponsorClient, sdk, {
+    account: sponsor,
+    address: contractAddress,
+    functionName: "resolve_submission",
+    args: [submissionId],
+    value: 0n,
+  })
+  const [project, milestone, submission] = await Promise.all([
+    readClient.readContract({ address: contractAddress, functionName: "get_project", args: [projectId] }),
+    readClient.readContract({ address: contractAddress, functionName: "get_milestone", args: [projectId, 0] }),
+    readClient.readContract({ address: contractAddress, functionName: "get_submission", args: [submissionId] }),
+  ])
+  if (integer(project?.[6], "project status") !== 1n) throw new Error("Happy path did not complete the project")
+  if (integer(milestone?.[7], "milestone state") !== 3n) throw new Error("Happy path did not approve the milestone")
+  if (integer(submission?.[5], "submission verdict") !== 1n) throw new Error("Happy path verdict was not APPROVED")
+
+  const evidencePath = resolve(env.LIVE_EVIDENCE_PATH || resolve(ROOT, "work/evidence/live-contract.json"))
+  const proof = {
+    schemaVersion: 1,
+    recordedAt: new Date().toISOString(),
+    network: network.name,
+    contractAddress,
+    actors: {
+      sponsor: sponsor.address,
+      builder: builder.address,
+      stranger: stranger.address,
+    },
+    fixture: FIXTURE,
+    transactions: {
+      createProject,
+      unauthorizedSubmission,
+      submitEvidence,
+      resolveSubmission,
+    },
+    readback: jsonSafe({ projectId, submissionId, project, milestone, submission }),
+  }
+  await writeJsonAtomically(evidencePath, proof, { immutable: true })
+  console.log(`Live contract evidence written: ${evidencePath}`)
+  console.log("Happy path: FINALIZED / FINISHED_WITH_RETURN / APPROVED")
+  console.log("Unauthorized branch: FINALIZED / FINISHED_WITH_ERROR")
+}
+
+if (isMain(import.meta.url)) {
+  try {
+    await runLiveE2e()
+  } catch (error) {
+    console.error(redactError(error))
+    process.exitCode = 1
+  }
+}

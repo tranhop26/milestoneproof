@@ -1,0 +1,74 @@
+import { readFile } from "node:fs/promises"
+import { resolve } from "node:path"
+
+import {
+  CONTRACT_PATH,
+  applyLocalEnv,
+  assertAddress,
+  assertHash,
+  assertSuccessfulFinalized,
+  chainFor,
+  deployedAddress,
+  isMain,
+  loadSdk,
+  normalizeConfig,
+  redactError,
+  resolveNetwork,
+  sha256,
+} from "./lib.mjs"
+
+function option(argv, name) {
+  const index = argv.indexOf(name)
+  if (index < 0 || !argv[index + 1]) throw new Error(`${name} is required`)
+  return argv[index + 1]
+}
+
+export async function verify({ env = process.env, argv = process.argv.slice(2) } = {}) {
+  await applyLocalEnv(env)
+  const manifestFile = resolve(option(argv, "--manifest"))
+  const manifest = JSON.parse(await readFile(manifestFile, "utf8"))
+  const network = resolveNetwork({ ...env, GENLAYER_NETWORK: manifest.network })
+  const contractAddress = assertAddress(manifest.contractAddress, "manifest contract address")
+  const transactionHash = assertHash(manifest.deploymentTransactionHash, "manifest deployment transaction hash")
+  if (manifest.verification?.transactionHash !== transactionHash) {
+    throw new Error("Manifest verification transaction does not match the deployment transaction")
+  }
+  const localSource = await readFile(CONTRACT_PATH, "utf8")
+  const localHash = sha256(localSource)
+  if (manifest.sourceSha256 !== localHash) throw new Error("Local source hash does not match the manifest")
+
+  const sdk = await loadSdk(env)
+  const client = sdk.createClient({ chain: chainFor(sdk, network) })
+  const receipt = await client.waitForTransactionReceipt({
+    hash: transactionHash,
+    status: sdk.TransactionStatus.FINALIZED,
+  })
+  assertSuccessfulFinalized(receipt, sdk.ExecutionResult.FINISHED_WITH_RETURN)
+  if (deployedAddress(receipt).toLowerCase() !== contractAddress.toLowerCase()) {
+    throw new Error("Deployment transaction produced a different contract address")
+  }
+  const configReadback = normalizeConfig(await client.readContract({
+    address: contractAddress,
+    functionName: "get_config",
+    args: [],
+  }))
+  const deployedHash = sha256(await client.getContractCode(contractAddress))
+  if (deployedHash !== localHash) throw new Error("Deployed source hash mismatch")
+  if (JSON.stringify(configReadback) !== JSON.stringify(manifest.verification?.configReadback)) {
+    throw new Error("Readback does not match the deployment manifest")
+  }
+
+  console.log(`Contract: ${contractAddress}`)
+  console.log(`Transaction: ${transactionHash} (FINALIZED / FINISHED_WITH_RETURN)`)
+  console.log(`Source hash verified: ${deployedHash}`)
+  console.log(`Readback verified: ${JSON.stringify(configReadback)}`)
+}
+
+if (isMain(import.meta.url)) {
+  try {
+    await verify()
+  } catch (error) {
+    console.error(redactError(error))
+    process.exitCode = 1
+  }
+}

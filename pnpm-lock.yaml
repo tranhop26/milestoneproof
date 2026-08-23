@@ -90,7 +90,11 @@ importers:
         specifier: 2.1.9
         version: 2.1.9(jsdom@25.0.1)
 
-  packages/contracts: {}
+  packages/contracts:
+    dependencies:
+      genlayer-js:
+        specifier: 1.1.8
+        version: 1.1.8(@typescript-eslint/parser@8.19.1(eslint@9.17.0(jiti@1.21.7))(typescript@5.5.4))(eslint@9.17.0(jiti@1.21.7))(typescript@5.5.4)
 
   packages/shared:
     dependencies:
