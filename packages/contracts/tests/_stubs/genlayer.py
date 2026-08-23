@@ -89,6 +89,8 @@ class _PublicNamespace:
 @dataclass
 class _Message:
     sender_address: Address = Address("0x0000000000000000000000000000000000000000")
+    chain_id: int = 61999
+    contract_address: Address = Address("0xc000000000000000000000000000000000000001")
 
 
 @dataclass
@@ -131,6 +133,14 @@ def set_sender(sender: Address | str) -> None:
 def set_now(timestamp: int) -> None:
     runtime = _runtime()
     runtime.message_raw.datetime = int(timestamp)
+
+
+def set_chain_id(chain_id: int) -> None:
+    _runtime().message.chain_id = int(chain_id)
+
+
+def set_contract_address(contract_address: Address | str) -> None:
+    _runtime().message.contract_address = Address(str(contract_address))
 
 
 def set_web_response(url: str, content: str) -> None:

@@ -29,9 +29,6 @@ MAX_SUBJECT_REF_LENGTH = 255
 MAX_VERSION_REF_LENGTH = 255
 ALLOWED_SOURCE_KINDS = ("REPOSITORY", "RELEASE", "CI", "DEPLOYMENT")
 COMMIT_SOURCE_KINDS = ("REPOSITORY", "CI")
-CHAIN_DOMAIN = "genlayer"
-CONTRACT_DOMAIN = "milestoneproof"
-TRUSTED_EVIDENCE_HOSTS = ("github.com", "vercel.app")
 
 ZERO_ADDRESS = gl.Address("0x0000000000000000000000000000000000000000")
 
@@ -233,6 +230,7 @@ class MilestoneProof(gl.Contract):
 
     def _submit_evidence(self, project_id: u256, milestone_index: u8, evidence: list, client_nonce: str) -> u256:
         builder = gl.message.sender_address
+        submitted_at = u64(gl.message_raw.datetime)
         project = self._project_or_revert(project_id)
         milestone = self._milestone_or_revert(project_id, milestone_index)
         if project.status != ACTIVE:
@@ -241,7 +239,7 @@ class MilestoneProof(gl.Contract):
             raise gl.UserError("builder only")
         if milestone.state != OPEN:
             raise gl.UserError("milestone is not open")
-        if gl.message_raw.datetime >= milestone.deadline:
+        if submitted_at >= milestone.deadline:
             raise gl.UserError("milestone deadline has passed")
         if int(milestone.submission_count) >= MAX_SUBMISSION_ATTEMPTS:
             raise gl.UserError("submission attempts exhausted")
@@ -250,17 +248,16 @@ class MilestoneProof(gl.Contract):
         if self.submission_nonces.get(nonce_key, False):
             raise gl.UserError("nonce already used")
 
-        frozen_evidence = self._freeze_evidence(evidence, milestone)
-        action_key = self._submission_action_key(project_id, milestone_index, builder, frozen_evidence)
+        frozen_evidence = self._freeze_evidence(evidence, milestone, submitted_at)
+        action_key = self._submission_action_key(project_id, milestone_index, builder, submitted_at, frozen_evidence)
         if self.submission_action_keys.get(action_key, False):
             raise gl.UserError("submission already exists")
 
         revision = u8(int(milestone.submission_count) + 1)
-        digest = self._canonical_evidence_digest(project_id, milestone_index, revision, builder, frozen_evidence)
+        digest = self._canonical_evidence_digest(project_id, milestone_index, revision, builder, submitted_at, frozen_evidence)
         if self.submissions.get(digest) is not None:
             raise gl.UserError("submission already exists")
 
-        submitted_at = u64(gl.message_raw.datetime)
         self.submissions[digest] = Submission(project_id, milestone_index, revision, NONE, builder, submitted_at, frozen_evidence, digest)
         self.submission_nonces[nonce_key] = True
         self.submission_action_keys[action_key] = True
@@ -269,7 +266,7 @@ class MilestoneProof(gl.Contract):
         milestone.state = SUBMITTED
         return digest
 
-    def _freeze_evidence(self, evidence: list, milestone: Milestone) -> DynArray[Evidence]:
+    def _freeze_evidence(self, evidence: list, milestone: Milestone, submitted_at: u64) -> DynArray[Evidence]:
         if not isinstance(evidence, list) or not evidence:
             raise gl.UserError("evidence is required")
         if len(evidence) > MAX_EVIDENCE_ITEMS:
@@ -287,15 +284,18 @@ class MilestoneProof(gl.Contract):
             self._validate_url(url)
             self._validate_required_text(subject_ref, MAX_SUBJECT_REF_LENGTH, "subject reference")
             self._validate_required_text(version_ref, MAX_VERSION_REF_LENGTH, "version reference")
-            if source_kind in COMMIT_SOURCE_KINDS and not self._is_full_git_commit(version_ref):
+            canonical_version_ref = version_ref.lower() if source_kind in COMMIT_SOURCE_KINDS else version_ref
+            if source_kind in COMMIT_SOURCE_KINDS and not self._is_full_git_commit(canonical_version_ref):
                 raise gl.UserError("full git commit is required")
             if not isinstance(observed_at, int) or isinstance(observed_at, bool) or observed_at < milestone.opened_at:
                 raise gl.UserError("evidence predates milestone")
-            tuple_key = self._length_prefixed([source_kind, subject_ref, version_ref])
+            if observed_at > submitted_at:
+                raise gl.UserError("evidence observation is in the future")
+            tuple_key = self._length_prefixed([source_kind, subject_ref, canonical_version_ref])
             if seen.get(tuple_key, False):
                 raise gl.UserError("duplicate evidence reference")
             seen[tuple_key] = True
-            frozen_evidence.append(Evidence(source_kind, url, subject_ref, version_ref, u64(observed_at)))
+            frozen_evidence.append(Evidence(source_kind, url, subject_ref, canonical_version_ref, u64(observed_at)))
         return frozen_evidence
 
     def _validate_url(self, url: str) -> None:
@@ -315,7 +315,7 @@ class MilestoneProof(gl.Contract):
         try:
             numeric_host = ip_address(normalized_host)
         except ValueError:
-            if self._looks_numeric_host(normalized_host) or not self._is_public_dns_name(normalized_host) or not self._is_trusted_evidence_host(normalized_host):
+            if self._looks_numeric_host(normalized_host) or not self._is_public_dns_name(normalized_host):
                 raise gl.UserError("unsafe evidence URL")
             return
         if not numeric_host.is_global:
@@ -324,7 +324,7 @@ class MilestoneProof(gl.Contract):
     def _reserved_host(self, host: str) -> bool:
         if host in ("localhost", "metadata.google.internal", "metadata.azure.internal"):
             return True
-        return host.endswith((".localhost", ".local", ".test", ".invalid", ".example", ".nip.io", ".sslip.io", ".xip.io"))
+        return host.endswith((".localhost", ".local", ".test", ".invalid", ".example", ".nip.io", ".sslip.io", ".xip.io", ".localtest.me", ".traefik.me"))
 
     def _looks_numeric_host(self, host: str) -> bool:
         return bool(host) and all(character.isdigit() or character == "." for character in host)
@@ -340,22 +340,19 @@ class MilestoneProof(gl.Contract):
                 return False
         return True
 
-    def _is_trusted_evidence_host(self, host: str) -> bool:
-        return any(host == trusted_host or host.endswith(f".{trusted_host}") for trusted_host in TRUSTED_EVIDENCE_HOSTS)
-
     def _is_full_git_commit(self, version_ref: str) -> bool:
         return len(version_ref) == 40 and all(character in "0123456789abcdef" for character in version_ref)
 
-    def _canonical_evidence_digest(self, project_id: u256, milestone_index: u8, revision: u8, builder: gl.Address, evidence: DynArray[Evidence]) -> u256:
-        payload = self._canonical_payload(project_id, milestone_index, revision, builder, evidence)
+    def _canonical_evidence_digest(self, project_id: u256, milestone_index: u8, revision: u8, builder: gl.Address, submitted_at: u64, evidence: DynArray[Evidence]) -> u256:
+        payload = self._canonical_payload(project_id, milestone_index, revision, builder, submitted_at, evidence)
         return u256(int(sha256(payload.encode("utf-8")).hexdigest(), 16))
 
-    def _submission_action_key(self, project_id: u256, milestone_index: u8, builder: gl.Address, evidence: DynArray[Evidence]) -> str:
-        payload = self._canonical_payload(project_id, milestone_index, u8(0), builder, evidence)
+    def _submission_action_key(self, project_id: u256, milestone_index: u8, builder: gl.Address, submitted_at: u64, evidence: DynArray[Evidence]) -> str:
+        payload = self._canonical_payload(project_id, milestone_index, u8(0), builder, submitted_at, evidence)
         return sha256(payload.encode("utf-8")).hexdigest()
 
-    def _canonical_payload(self, project_id: u256, milestone_index: u8, revision: u8, builder: gl.Address, evidence: DynArray[Evidence]) -> str:
-        fields = [CHAIN_DOMAIN, CONTRACT_DOMAIN, str(project_id), str(milestone_index), str(revision), str(builder), str(len(evidence))]
+    def _canonical_payload(self, project_id: u256, milestone_index: u8, revision: u8, builder: gl.Address, submitted_at: u64, evidence: DynArray[Evidence]) -> str:
+        fields = [str(gl.message.chain_id), str(gl.message.contract_address), str(project_id), str(milestone_index), str(revision), str(builder), str(submitted_at), str(len(evidence))]
         for item in evidence:
             fields.extend([item.source_kind, item.url, item.subject_ref, item.version_ref, str(item.observed_at)])
         return self._length_prefixed(fields)

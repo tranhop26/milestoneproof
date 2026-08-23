@@ -1,7 +1,10 @@
 {
   "valid": [
     "https://github.com/acme/milestoneproof/commit/0123456789abcdef0123456789abcdef01234567",
-    "https://milestoneproof.vercel.app/releases/mvp"
+    "https://milestoneproof.vercel.app/releases/mvp",
+    "https://gitlab.com/acme/milestoneproof/-/commit/0123456789abcdef0123456789abcdef01234567",
+    "https://codeberg.org/acme/milestoneproof/commit/0123456789abcdef0123456789abcdef01234567",
+    "https://evidence.acme.dev/releases/mvp"
   ],
   "invalid": [
     "http://github.com/acme/milestoneproof",
@@ -23,6 +26,8 @@
     "https://github.com%00.attacker.example/evidence",
     "https://internal/evidence",
     "https://127.0.0.1.nip.io/evidence",
+    "https://127.0.0.1.sslip.io/evidence",
+    "https://127.0.0.1.xip.io/evidence",
     "https://127.0.0.1.localtest.me/evidence",
     "https://127.0.0.1.traefik.me/evidence",
     "https://github.com/acme/milestoneproof\nunsafe",

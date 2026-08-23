@@ -27,3 +27,30 @@ Files changed: `packages/contracts/milestoneproof.py`, `packages/contracts/tests
 ## Concerns
 
 - Supporting arbitrary third-party evidence hosts safely requires a rebinding-safe resolve-and-fetch primitive. This task intentionally accepts only trusted GitHub/Vercel host suffixes rather than risk resolving a syntactically public hostname to a private address.
+
+## Fix Round 1
+
+### Implementation
+
+- Replaced product-name replay constants with the live `gl.message.chain_id` and `gl.message.contract_address` values in both canonical digest and action-key payloads.
+- Captures submission time once before validation; it bounds `observed_at`, drives deadline validation/storage, and is length-prefixed into both replay payloads.
+- Removed the GitHub/Vercel provider allowlist. GitLab, Codeberg, and custom public HTTPS domains are accepted; literal private/reserved hosts and known DNS-to-private-IP alias suffixes remain rejected until Task 4's final-target fetch revalidation.
+- Normalizes repository/CI 40-hex commit references to lowercase before tuple uniqueness, storage, and hashing.
+- Extended the GenLayer test runtime with typed chain ID and contract address transaction context, and expanded failure snapshots to include nonce/action-key maps.
+
+### RED / GREEN
+
+- RED: `pnpm test:contract -- tests/test_evidence.py -q` — 6 expected failures for public hosts, actual chain/contract domains, submission timestamp binding, future observations, and uppercase commit normalization.
+- RED: `pnpm test:contract -- -k unsafe_evidence_url -q` — 5 expected failures for known private-DNS aliases after provider allowlist removal.
+- GREEN focused: `pnpm test:contract -- tests/test_evidence.py -q` — 81 passed.
+- GREEN full: `pnpm test:contract` — 81 passed.
+- `git diff --check` — clean.
+
+### Self-review
+
+- `test_canonical_digest_uses_actual_chain_and_contract_domains` varies chain and deployed address independently; builder, milestone, revision, timestamp, future-observation, map-immutability, and uppercase-normalization cases are covered by named behavior tests.
+- Independent review found the DNS-alias regression created by removing the provider allowlist. The five aliases are restored as shared invalid vectors and rejected by a targeted suffix guard without blocking normal custom domains.
+
+### Concerns
+
+- Task 4 must revalidate the resolved final fetch target, including redirects, before rendering arbitrary public DNS evidence. Task 3 rejects literal/private/reserved and known alias forms only.
