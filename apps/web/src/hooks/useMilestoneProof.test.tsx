@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest"
 import type { MilestoneProofContract } from "../lib/contract"
 import type { Eip1193Provider } from "../lib/genlayer"
 import { useWallet, WalletProvider } from "../lib/wallet"
-import { useMilestoneActions } from "./useMilestoneProof"
+import { useMilestoneActions, type MilestoneAction } from "./useMilestoneProof"
 
 const CONTRACT = "0xc000000000000000000000000000000000000001" as const
 const SPONSOR = "0x1000000000000000000000000000000000000001" as const
@@ -60,16 +60,69 @@ async function connected(hook: ReturnType<typeof renderActions>) {
 }
 
 describe("useMilestoneActions authoritative gates", () => {
-  it("rejects a historical submission before requesting a write", async () => {
+  it.each([
+    ["resolve", submission(), submission({ id: "99", digest: "99", revision: 2 })],
+    ["resubmit", submission({ verdict: "REJECTED" }), submission({ id: "99", digest: "99", revision: 2, verdict: "REJECTED" })],
+    ["supplement", submission({ verdict: "REQUEST_MORE_INFO", resolvedAt: String(NOW - 1) }), submission({ id: "99", digest: "99", revision: 2, verdict: "REQUEST_MORE_INFO", resolvedAt: String(NOW - 1) })],
+    ["retry", submission({ verdict: "UNRESOLVED", resolutionCount: 1, nextRetryAt: "0" }), submission({ id: "99", digest: "99", revision: 2, verdict: "UNRESOLVED", resolutionCount: 1, nextRetryAt: "0" })],
+    ["expire", submission({ verdict: "REJECTED" }), submission({ id: "99", digest: "99", revision: 2, verdict: "REJECTED" })],
+  ] as const)("rejects stale %s action context before requesting a write", async (kind, staleSubmission, authoritativeSubmission) => {
     const currentProject = project()
-    const currentMilestone = milestone({ currentSubmissionId: "99" })
-    const oldSubmission = submission()
-    const adapter = contract({ project: () => currentProject, milestone: () => currentMilestone, submission: () => oldSubmission })
+    const currentMilestone = milestone({ currentSubmissionId: "99", submissionCount: 2, deadline: kind === "expire" ? String(NOW - 1) : "2100000000" })
+    const adapter = contract({
+      project: () => currentProject,
+      milestone: () => currentMilestone,
+      submission: (id) => {
+        expect(id).toBe("99")
+        return authoritativeSubmission
+      },
+    })
+    const hook = renderActions(adapter)
+    await connected(hook)
+    const base = { project: currentProject, milestone: currentMilestone, submission: staleSubmission }
+    const action: MilestoneAction = kind === "resolve" || kind === "retry" || kind === "expire"
+      ? { kind, ...base }
+      : { kind, ...base, evidence: [EVIDENCE] }
+
+    await expect(hook.result.current.actions.mutateAsync(action)).rejects.toThrow(/authoritative current submission/i)
+    expect(adapter.writes.resolveSubmission).not.toHaveBeenCalled()
+    expect(adapter.writes.resubmitEvidence).not.toHaveBeenCalled()
+    expect(adapter.writes.supplementEvidence).not.toHaveBeenCalled()
+    expect(adapter.writes.retryResolution).not.toHaveBeenCalled()
+    expect(adapter.writes.expireMilestone).not.toHaveBeenCalled()
+  })
+
+  it("rejects submitted expiry without an action submission snapshot", async () => {
+    const currentProject = project()
+    const currentMilestone = milestone({ deadline: String(NOW - 1) })
+    const currentSubmission = submission({ verdict: "REJECTED" })
+    const adapter = contract({ project: () => currentProject, milestone: () => currentMilestone, submission: () => currentSubmission })
     const hook = renderActions(adapter)
     await connected(hook)
 
-    await expect(hook.result.current.actions.mutateAsync({ kind: "resolve", project: currentProject, milestone: currentMilestone, submission: oldSubmission })).rejects.toThrow(/current submission/i)
-    expect(adapter.writes.resolveSubmission).not.toHaveBeenCalled()
+    await expect(hook.result.current.actions.mutateAsync({ kind: "expire", project: currentProject, milestone: currentMilestone })).rejects.toThrow(/authoritative current submission/i)
+    expect(adapter.writes.expireMilestone).not.toHaveBeenCalled()
+  })
+
+  it("preserves a valid current UNRESOLVED retry path", async () => {
+    let written = false
+    const currentProject = project()
+    const currentMilestone = milestone()
+    const unresolved = submission({ verdict: "UNRESOLVED", resolutionCount: 1, nextRetryAt: "0" })
+    const retried = submission({ verdict: "REQUEST_MORE_INFO", resolvedAt: String(NOW), resolutionCount: 2 })
+    const adapter = contract({
+      project: () => currentProject,
+      milestone: () => currentMilestone,
+      submission: () => written ? retried : unresolved,
+    })
+    vi.mocked(adapter.writes.retryResolution).mockImplementation(async () => { written = true; return TX_HASH })
+    const hook = renderActions(adapter)
+    await connected(hook)
+
+    await act(async () => { await hook.result.current.actions.mutateAsync({ kind: "retry", project: currentProject, milestone: currentMilestone, submission: unresolved }) })
+
+    expect(adapter.writes.retryResolution).toHaveBeenCalledWith("88")
+    expect(hook.result.current.actions.transactionState.phase).toBe("READBACK")
   })
 
   it("confirms a new evidence revision only after write, receipt, digest, and evidence readback", async () => {

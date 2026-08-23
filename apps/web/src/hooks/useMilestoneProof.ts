@@ -259,14 +259,19 @@ function assertActionAllowed(action: MilestoneAction, actor: string, now: number
   assertCurrentProjectContext(project, milestone)
   const isBuilder = actor === project.builder
   const isParty = isBuilder || actor === project.sponsor
+  const actionSubmission = action.kind === "submit" ? undefined : action.submission
+  const requiresCurrentSubmission = action.kind !== "submit"
+    && (action.kind !== "expire" || milestone.status === "SUBMITTED")
+  if (requiresCurrentSubmission && (!actionSubmission
+    || actionSubmission.id !== milestone.currentSubmissionId
+    || !submission
+    || submission.id !== milestone.currentSubmissionId
+    || submission.projectId !== project.id
+    || submission.milestoneIndex !== milestone.index)) {
+    throw new Error("Submission is not the authoritative current submission.")
+  }
   if (action.kind === "expire") {
     if (action.submission && action.submission.id !== milestone.currentSubmissionId) {
-      throw new Error("Submission is not the authoritative current submission.")
-    }
-    if (milestone.status === "SUBMITTED" && (!submission
-      || submission.id !== milestone.currentSubmissionId
-      || submission.projectId !== project.id
-      || submission.milestoneIndex !== milestone.index)) {
       throw new Error("Submission is not the authoritative current submission.")
     }
     const expiryAllowed = milestone.status === "OPEN"
