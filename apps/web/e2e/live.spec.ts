@@ -29,8 +29,8 @@ async function selectActor(page: Page, privateKey: `0x${string}`, address: strin
   })).toBeVisible()
 }
 
-async function startPhaseCapture(page: Page) {
-  await page.evaluate(() => {
+async function startPhaseCapture(page: Page, captureCurrent = true) {
+  await page.evaluate((shouldCaptureCurrent) => {
     const runtime = window as Window & { __MILESTONEPROOF_E2E_PHASES__?: string[] }
     runtime.__MILESTONEPROOF_E2E_PHASES__ = []
     const capture = () => {
@@ -47,8 +47,8 @@ async function startPhaseCapture(page: Page) {
       subtree: true,
       attributeFilter: ["data-transaction-phase"],
     })
-    capture()
-  })
+    if (shouldCaptureCurrent) capture()
+  }, captureCurrent)
 }
 
 async function expectHappyPhases(page: Page) {
@@ -78,6 +78,24 @@ test("a FINISHED_WITH_ERROR receipt never reaches success or readback", async ({
   await expect(progress.getByText("READBACK").locator("..")).not.toHaveClass(/step-complete/)
 })
 
+test("a successful receipt renders every truthful lifecycle phase in order", async ({ page }) => {
+  await page.route("**/__e2e/receipt", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      statusName: "FINALIZED",
+      txExecutionResultName: "FINISHED_WITH_RETURN",
+      consensus_data: { leader_receipt: [{ result: "1" }] },
+    }),
+  }))
+  await page.goto("/e2e/fixtures/transaction.html")
+  await startPhaseCapture(page, false)
+  await page.getByRole("button", { name: "Submit fixture transaction" }).click()
+
+  await expectHappyPhases(page)
+  await expect(page.getByTestId("fixture-phase")).toHaveText("READBACK")
+  await expect(page.getByTestId("readback-calls")).toHaveText("1")
+})
+
 test("responsive shell preserves navigation, workspace, hashes, and touch targets", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/e2e/fixtures/transaction.html")
@@ -102,9 +120,13 @@ test("responsive shell preserves navigation, workspace, hashes, and touch target
   ))
   expect(Math.abs(mobileCards[0].x - mobileCards[1].x)).toBeLessThan(2)
   expect(mobileCards[1].y).toBeGreaterThan(mobileCards[0].y)
-  const hashBox = await page.getByRole("link", { name: /^0x[0-9a-f]{64}$/ }).boundingBox()
+  const hashLink = page.getByRole("link", { name: /^0x[0-9a-f]{64}$/ })
+  const hashBox = await hashLink.boundingBox()
   expect(hashBox).not.toBeNull()
   expect((hashBox?.x ?? 0) + (hashBox?.width ?? 0)).toBeLessThanOrEqual(390)
+  expect(await hashLink.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)
+  expect(await page.locator(".transaction-panel").evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
   const undersizedControls = await page.locator("button, .brand, .nav-item, .transaction-link").evaluateAll((nodes) => (
     nodes.filter((node) => {
       const rect = node.getBoundingClientRect()

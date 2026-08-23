@@ -158,9 +158,9 @@ describe("ProjectWorkspace", () => {
     await userEvent.click(screen.getByRole("button", { name: "Expire milestone" }))
 
     await waitFor(() => expect(adapter.writes.expireMilestone).toHaveBeenCalledWith("7", 1))
-    expect(await screen.findByRole("region", { name: "Execution status" })).toHaveTextContent(
+    await waitFor(() => expect(screen.getByRole("region", { name: "Execution status" })).toHaveTextContent(
       "Authoritative contract readback confirmed.",
-    )
+    ))
     await userEvent.click(screen.getByRole("tab", { name: "On-chain activity" }))
     expect(await screen.findByText("Authoritative contract readback confirmed.")).toBeInTheDocument()
   })

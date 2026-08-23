@@ -94,6 +94,34 @@ describe("runWriteAndReadback", () => {
     ])
   })
 
+  it("yields after each successful lifecycle emission before advancing", async () => {
+    const events: string[] = []
+    const adapter: TransactionAdapter<{ projectId: string }> = {
+      assertReady: () => { events.push("assert-ready") },
+      submit: async () => { events.push("submit"); return TX_HASH },
+      waitForFinalized: async () => { events.push("wait-finalized"); return { executionSucceeded: true } },
+      readback: async () => { events.push("readback"); return { projectId: "42" } },
+    }
+
+    await runWriteAndReadback(
+      adapter,
+      (state) => events.push(`state:${state.phase}`),
+      { yieldAfterState: async () => { events.push("yield") } },
+    )
+
+    expect(events).toEqual([
+      "assert-ready",
+      "state:AWAITING_SIGNATURE", "yield",
+      "submit",
+      "state:PENDING", "yield",
+      "wait-finalized",
+      "state:FINALIZED", "yield",
+      "state:SUCCESS", "yield",
+      "readback",
+      "state:READBACK", "yield",
+    ])
+  })
+
   it("turns failed readback into an error after execution success", async () => {
     const states: Array<{ phase: string; code?: string }> = []
     const adapter = successfulAdapter({ projectId: "42" })

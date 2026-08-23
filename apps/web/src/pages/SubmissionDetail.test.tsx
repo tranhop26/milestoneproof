@@ -260,6 +260,6 @@ describe("SubmissionDetail", () => {
     await user.type(screen.getByLabelText("Evidence 1 observed at"), "2027-01-15T15:01")
     await user.click(screen.getByRole("button", { name: label }))
 
-    expect(await screen.findByTestId("location")).toHaveTextContent("/submissions/99")
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/submissions/99"))
   })
 })

@@ -40,6 +40,7 @@ export interface TransactionAdapter<TReadback> {
 
 export interface TransactionRunOptions<TReadback> {
   onReadbackConfirmed?: (readback: TReadback) => void
+  yieldAfterState?: () => Promise<void>
 }
 
 export class TransactionLifecycleError extends Error {
@@ -79,11 +80,21 @@ function readyFailureState(error: TransactionLifecycleError): TransactionState {
   return { phase: "ERROR", code: error.code, message: error.message }
 }
 
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, 0))
+}
+
 export async function runWriteAndReadback<TReadback>(
   adapter: TransactionAdapter<TReadback>,
   onState: (state: TransactionState) => void,
   options: TransactionRunOptions<TReadback> = {},
 ): Promise<TReadback> {
+  const yieldAfterState = options.yieldAfterState ?? yieldToEventLoop
+  const emit = async (state: TransactionState) => {
+    onState(state)
+    await yieldAfterState()
+  }
+
   try {
     await adapter.assertReady()
   } catch (error) {
@@ -94,7 +105,7 @@ export async function runWriteAndReadback<TReadback>(
     throw normalized
   }
 
-  onState({ phase: "AWAITING_SIGNATURE", message: "Confirm this transaction in your wallet." })
+  await emit({ phase: "AWAITING_SIGNATURE", message: "Confirm this transaction in your wallet." })
 
   let hash: `0x${string}`
   try {
@@ -105,7 +116,7 @@ export async function runWriteAndReadback<TReadback>(
     throw normalized
   }
 
-  onState({ phase: "PENDING", hash, message: "Transaction submitted. Waiting for consensus." })
+  await emit({ phase: "PENDING", hash, message: "Transaction submitted. Waiting for consensus." })
 
   let execution: FinalizedExecution
   try {
@@ -116,7 +127,7 @@ export async function runWriteAndReadback<TReadback>(
     throw normalized
   }
 
-  onState({ phase: "FINALIZED", hash, message: "Consensus finalized. Checking execution result." })
+  await emit({ phase: "FINALIZED", hash, message: "Consensus finalized. Checking execution result." })
   if (!execution.executionSucceeded) {
     const normalized = new TransactionLifecycleError(
       "EXECUTION_FAILED",
@@ -126,7 +137,7 @@ export async function runWriteAndReadback<TReadback>(
     throw normalized
   }
 
-  onState({ phase: "SUCCESS", hash, message: "Contract execution succeeded." })
+  await emit({ phase: "SUCCESS", hash, message: "Contract execution succeeded." })
 
   let readback: TReadback
   try {
@@ -152,6 +163,6 @@ export async function runWriteAndReadback<TReadback>(
     onState({ phase: "ERROR", progressPhase: "READBACK", hash, code: normalized.code, message: normalized.message })
     throw normalized
   }
-  onState({ phase: "READBACK", hash, message: "Authoritative contract readback confirmed." })
+  await emit({ phase: "READBACK", hash, message: "Authoritative contract readback confirmed." })
   return readback
 }
