@@ -349,7 +349,8 @@ function publicEvidenceUrl(value: unknown, field: string): string {
     throw new ContractShapeError(`${field} must be a public HTTPS URL`)
   }
 
-  if (raw.includes("#")) {
+  const hashIndex = raw.indexOf("#")
+  if (hashIndex >= 0 && hashIndex !== raw.length - 1) {
     throw new ContractShapeError(`${field} must be a public HTTPS URL`)
   }
   if (!host.includes("%")) {
@@ -359,7 +360,7 @@ function publicEvidenceUrl(value: unknown, field: string): string {
     } catch {
       throw new ContractShapeError(`${field} must be a public HTTPS URL`)
     }
-    if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.hash) {
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.hash.length > 1) {
       throw new ContractShapeError(`${field} must be a public HTTPS URL`)
     }
   }
