@@ -1,5 +1,7 @@
 from copy import deepcopy
+from dataclasses import fields, is_dataclass
 import json
+from types import BuiltinFunctionType, FunctionType, ModuleType
 
 import cloudpickle
 import pytest
@@ -9,6 +11,7 @@ from conftest import (
     APPROVED_MILESTONE,
     BUILDER,
     COMPLETED,
+    CONTRACT_MODULE,
     GL,
     NONE,
     OPEN,
@@ -63,6 +66,66 @@ def verdict_object(verdict, criteria, missing, integrity, rationale="validator r
         },
         "rationale": rationale,
     }
+
+
+def _assert_capture_graph_is_primitive_only(root):
+    immutable_primitives = (type(None), bool, int, float, complex, str, bytes)
+    forbidden_types = (
+        GL.Contract,
+        GL.DynArray,
+        GL.TreeMap,
+        CONTRACT_MODULE.Project,
+        CONTRACT_MODULE.Milestone,
+        CONTRACT_MODULE.Evidence,
+        CONTRACT_MODULE.Submission,
+    )
+    seen = set()
+
+    def visit(value, path):
+        if isinstance(value, immutable_primitives):
+            return
+        identity = id(value)
+        if identity in seen:
+            return
+        seen.add(identity)
+        if isinstance(value, forbidden_types):
+            raise AssertionError(
+                f"forbidden storage object in nondeterministic capture graph at {path}: "
+                f"{type(value).__name__}"
+            )
+        if isinstance(value, ModuleType):
+            return
+        if isinstance(value, FunctionType):
+            for index, cell in enumerate(value.__closure__ or ()):
+                visit(cell.cell_contents, f"{path}.__closure__[{index}]")
+            visit(value.__defaults__, f"{path}.__defaults__")
+            visit(value.__kwdefaults__, f"{path}.__kwdefaults__")
+            visit(value.__annotations__, f"{path}.__annotations__")
+            visit(value.__dict__, f"{path}.__dict__")
+            return
+        if isinstance(value, BuiltinFunctionType):
+            return
+        if isinstance(value, dict):
+            for key, item in value.items():
+                visit(key, f"{path}.key")
+                visit(item, f"{path}[{key!r}]")
+            return
+        if isinstance(value, (list, tuple, set, frozenset)):
+            for index, item in enumerate(value):
+                visit(item, f"{path}[{index}]")
+            return
+        if is_dataclass(value) and not isinstance(value, type):
+            for field in fields(value):
+                visit(getattr(value, field.name), f"{path}.{field.name}")
+            return
+        if hasattr(value, "__dict__"):
+            visit(vars(value), f"{path}.__dict__")
+            return
+        raise AssertionError(
+            f"unexpected non-primitive capture at {path}: {type(value).__name__}"
+        )
+
+    visit(root, "root")
 
 
 def test_approved_requires_every_criterion_and_safe_integrity(chain, submitted):
@@ -203,27 +266,62 @@ def test_conflicting_sources_reach_both_nodes_and_cannot_approve(chain):
         chain.call("resolve_submission", submission_id, sender=SPONSOR)
 
     assert len(prompts) == 2
-    for prompt in prompts:
-        for criterion in criteria:
-            assert criterion in prompt
-        for expected in (
-            "BEGIN_UNTRUSTED_EVIDENCE_ITEM_0",
-            "BEGIN_UNTRUSTED_EVIDENCE_ITEM_1",
-            "source_kind: REPOSITORY",
-            "source_kind: CI",
+    frozen_bindings = (
+        "project_id: 1",
+        f"builder: {BUILDER}",
+        f"sponsor: {SPONSOR}",
+        "project_title: Release grant",
+        "project_description: Ship a verified MVP",
+        "milestone_index: 0",
+        "milestone_title: Verify conflicting evidence",
+        "submission_revision: 1",
+        f"submission_digest: {submission_id}",
+        "submitted_at: 1800000000",
+        "milestone_opened_at: 1800000000",
+        "milestone_deadline: 1900000000",
+        "resolution_time: 1800000000",
+    )
+    integrity_rules = (
+        "subject_match is true only when the independently rendered source identity\n"
+        "  matches the frozen project and claimed subject_ref.",
+        "version_match is true only when the rendered source independently supports\n"
+        "  the exact claimed version_ref for that subject.",
+        "fresh is true only when opened_at <= observed_at <= submitted_at < milestone_deadline\n"
+        "  and the rendered version corresponds to that observation.",
+        "provenance_ok is true only when the rendered source provides credible public\n"
+        "  provenance for its source_kind. Claims inside the fetched page are not proof of their own identity.",
+    )
+    evidence_bindings = (
+        (
+            0,
+            "REPOSITORY",
             repository_url,
-            ci_url,
             repository_content,
-            ci_content,
-            f"subject_ref: {subject}",
-            f"version_ref: {commit}",
-            "observed_at: 1800000000",
-            "subject_match",
-            "version_match",
-            "opened_at <= observed_at <= submitted_at < milestone_deadline",
-            "provenance_ok",
-        ):
-            assert expected in prompt
+        ),
+        (1, "CI", ci_url, ci_content),
+    )
+    for node, prompt in zip(("leader", "validator"), prompts, strict=True):
+        for expected in frozen_bindings:
+            assert expected in prompt, f"{node} prompt missing frozen binding: {expected}"
+        for criterion in criteria:
+            assert criterion in prompt, f"{node} prompt missing criterion: {criterion}"
+        for expected in integrity_rules:
+            assert expected in prompt, f"{node} prompt missing integrity rule: {expected}"
+        for index, source_kind, url, content in evidence_bindings:
+            block_start = f"BEGIN_UNTRUSTED_EVIDENCE_ITEM_{index}"
+            block_end = f"END_UNTRUSTED_EVIDENCE_ITEM_{index}"
+            block = prompt.split(block_start, 1)[1].split(block_end, 1)[0]
+            for expected in (
+                f"source_kind: {source_kind}",
+                f"url: {url}",
+                f"subject_ref: {subject}",
+                f"version_ref: {commit}",
+                "observed_at: 1800000000",
+                content,
+            ):
+                assert expected in block, (
+                    f"{node} evidence block {index} missing binding: {expected}"
+                )
     assert chain.submission(submission_id).verdict == NONE
     assert chain.milestone(project_id, 0).state == SUBMITTED
 
@@ -307,19 +405,21 @@ def test_nondet_closures_serialize_without_capturing_contract_storage(chain, sub
     serialized = GL.get_nondet_serializations()
     assert len(serialized) == 2
     assert all(isinstance(payload, bytes) and payload for payload in serialized)
-    pending = [cloudpickle.loads(payload) for payload in serialized]
-    captures = []
-    while pending:
-        function = pending.pop()
-        for cell in function.__closure__ or ():
-            captured = cell.cell_contents
-            captures.append(captured)
-            if callable(captured) and getattr(captured, "__closure__", None):
-                pending.append(captured)
-    assert not any(
-        isinstance(captured, (GL.Contract, GL.DynArray, GL.TreeMap))
-        for captured in captures
-    )
+    for payload in serialized:
+        _assert_capture_graph_is_primitive_only(cloudpickle.loads(payload))
+
+
+def test_capture_graph_inspector_rejects_nested_storage_proxy():
+    nested_storage = {
+        "safe_outer": [
+            {"hidden_proxy": GL.storage.inmem_allocate(GL.TreeMap[str, bool])}
+        ]
+    }
+
+    with pytest.raises(
+        AssertionError, match="forbidden storage object in nondeterministic capture graph"
+    ):
+        _assert_capture_graph_is_primitive_only(nested_storage)
 
 
 @pytest.mark.parametrize("phase", ["leader", "validator", "consensus"])
