@@ -3,7 +3,6 @@ from __future__ import annotations
 from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass
-from types import SimpleNamespace
 from typing import Any, Callable
 
 
@@ -208,16 +207,25 @@ class Contract:
     pass
 
 
+class _RuntimeAccessor:
+    def __init__(self, field_name: str) -> None:
+        object.__setattr__(self, "_field_name", field_name)
+
+    def __getattr__(self, name: str) -> Any:
+        target = getattr(_runtime(), object.__getattribute__(self, "_field_name"))
+        return getattr(target, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        target = getattr(_runtime(), object.__getattribute__(self, "_field_name"))
+        setattr(target, name, value)
+
+
 public = _PublicNamespace()
 storage = _StorageNamespace()
 nondet = _NondetNamespace()
 semantic = _SemanticNamespace()
-message = SimpleNamespace(
-    __getattr__=lambda self, name: getattr(_runtime().message, name),
-)
-message_raw = SimpleNamespace(
-    __getattr__=lambda self, name: getattr(_runtime().message_raw, name),
-)
+message = _RuntimeAccessor("message")
+message_raw = _RuntimeAccessor("message_raw")
 
 
 def __getattr__(name: str) -> Any:
