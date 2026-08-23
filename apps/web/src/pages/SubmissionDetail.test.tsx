@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { EvidenceInput, MilestoneView, ProjectView, SubmissionView, Verdict } from "@milestoneproof/shared"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter, Route, Routes } from "react-router-dom"
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 
 import type { MilestoneProofContract } from "../lib/contract"
@@ -25,8 +25,8 @@ const EVIDENCE: EvidenceInput = {
   observedAt: "1800000100",
 }
 
-function project(): ProjectView {
-  return { schemaVersion: 1, id: "7", sponsor: SPONSOR, builder: BUILDER, title: "Compiler release", description: "Ship a verified compiler release", status: "ACTIVE", currentMilestone: 0, createdAt: "1800000000", milestoneCount: 1 }
+function project(overrides: Partial<ProjectView> = {}): ProjectView {
+  return { schemaVersion: 1, id: "7", sponsor: SPONSOR, builder: BUILDER, title: "Compiler release", description: "Ship a verified compiler release", status: "ACTIVE", currentMilestone: 0, createdAt: "1800000000", milestoneCount: 1, ...overrides }
 }
 
 function milestone(overrides: Partial<MilestoneView> = {}): MilestoneView {
@@ -57,16 +57,16 @@ function submission(verdict: Verdict, overrides: Partial<SubmissionView> = {}): 
   }
 }
 
-function provider(account: string): Eip1193Provider {
-  return { request: vi.fn(async ({ method }) => method === "eth_chainId" ? "0xf22f" : [account]) }
+function provider(account: string, chainId = "0xf22f"): Eip1193Provider {
+  return { request: vi.fn(async ({ method }) => method === "eth_chainId" ? chainId : [account]) }
 }
 
-function fakeContract(view: SubmissionView, milestoneView = milestone()): MilestoneProofContract {
+function fakeContract(view: SubmissionView, milestoneView = milestone(), projectView = project()): MilestoneProofContract {
   return {
     address: CONTRACT,
     reads: {
       config: vi.fn(),
-      project: vi.fn(async () => project()),
+      project: vi.fn(async () => projectView),
       milestone: vi.fn(async () => milestoneView),
       submission: vi.fn(async () => view),
       actorProjects: vi.fn(),
@@ -84,13 +84,18 @@ function fakeContract(view: SubmissionView, milestoneView = milestone()): Milest
   }
 }
 
-function renderDetail(view: SubmissionView, account: string = BUILDER, now = 1_800_000_400, milestoneView?: MilestoneView) {
-  const contract = fakeContract(view, milestoneView)
+function LocationProbe() {
+  return <span data-testid="location">{useLocation().pathname}</span>
+}
+
+function renderDetail(view: SubmissionView, account: string = BUILDER, now = 1_800_000_400, milestoneView?: MilestoneView, projectView?: ProjectView, contractOverride?: MilestoneProofContract, chainId = "0xf22f") {
+  const contract = contractOverride ?? fakeContract(view, milestoneView, projectView)
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   const rendered = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/submissions/88"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-        <WalletProvider provider={provider(account)}>
+        <WalletProvider provider={provider(account, chainId)}>
+          <LocationProbe />
           <Routes><Route element={<SubmissionDetail contract={contract} now={() => now} />} path="/submissions/:submissionId" /></Routes>
         </WalletProvider>
       </MemoryRouter>
@@ -114,6 +119,18 @@ describe("SubmissionDetail", () => {
     expect(screen.queryByRole("button", { name: "Resolve submission" })).not.toBeInTheDocument()
   })
 
+  it.each([
+    ["historical revision", milestone({ currentSubmissionId: "99" }), project(), "This route is a historical submission and cannot execute current actions."],
+    ["failed project", milestone(), project({ status: "FAILED" }), "Project or milestone is terminal; actions are suppressed."],
+    ["failed milestone", milestone({ status: "FAILED" }), project(), "Project or milestone is terminal; actions are suppressed."],
+    ["noncurrent milestone", milestone(), project({ currentMilestone: 1, milestoneCount: 2 }), "This milestone is not the project's current milestone."],
+  ] as const)("suppresses actions for %s authoritative context", async (_label, milestoneView, projectView, explanation) => {
+    renderDetail(submission("NONE"), BUILDER, 1_800_000_400, milestoneView, projectView)
+
+    expect(await screen.findByText(explanation)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Resolve submission" })).not.toBeInTheDocument()
+  })
+
   it("renders contract-backed evidence, criterion coverage, integrity, rationale, revision, and explorer links", async () => {
     renderDetail(submission("REQUEST_MORE_INFO", { revision: 2 }), BUILDER)
 
@@ -128,10 +145,17 @@ describe("SubmissionDetail", () => {
   })
 
   it("offers only a builder supplement for REQUEST_MORE_INFO", async () => {
-    renderDetail(submission("REQUEST_MORE_INFO"), BUILDER)
+    renderDetail(submission("REQUEST_MORE_INFO", { freshnessDeadline: "1900000000" }), BUILDER)
 
     expect(await screen.findByRole("button", { name: "Supplement evidence" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /resolve|retry|resubmit/i })).not.toBeInTheDocument()
+  })
+
+  it("suppresses supplement after the authoritative information window elapses", async () => {
+    renderDetail(submission("REQUEST_MORE_INFO", { freshnessDeadline: "1800000350" }), BUILDER, 1_800_000_400)
+
+    expect(await screen.findByText("The information window has elapsed; supplement is suppressed.")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Supplement evidence" })).not.toBeInTheDocument()
   })
 
   it("explains role ownership and exhausted retries instead of exposing invalid actions", async () => {
@@ -180,7 +204,54 @@ describe("SubmissionDetail", () => {
     await user.click(await screen.findByRole("button", { name: "Resolve submission" }))
 
     expect(await screen.findByRole("alert")).toHaveTextContent("validator execution reverted")
-    await waitFor(() => expect(contract.reads.submission).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(contract.reads.submission).toHaveBeenCalledTimes(2))
     expect(screen.queryByText("Authoritative contract readback confirmed.")).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ["NONE", "Pending", "Pending"],
+    ["UNRESOLVED", "Unresolved", "Unknown"],
+  ] as const)("labels %s audit placeholders without claiming failure", async (verdict, criterionLabel, integrityLabel) => {
+    renderDetail(submission(verdict), BUILDER)
+    const coverage = await screen.findByText("Criterion coverage")
+    const coverageCard = coverage.closest("section") as HTMLElement
+    const integrity = screen.getByText("Integrity checks").closest("section") as HTMLElement
+
+    expect(within(coverageCard).getAllByText(criterionLabel)).toHaveLength(2)
+    expect(within(integrity).getAllByText(integrityLabel)).toHaveLength(4)
+    expect(within(integrity).queryByText("Fail")).not.toBeInTheDocument()
+  })
+
+  it("shows wrong-network guidance and suppresses writes", async () => {
+    renderDetail(submission("NONE"), BUILDER, 1_800_000_400, undefined, undefined, undefined, "0x1")
+
+    expect(await screen.findByText("WRONG_NETWORK")).toBeInTheDocument()
+    expect(screen.getByText("Switch to GenLayer Studionet to continue.")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Resolve submission" })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ["supplement", "REQUEST_MORE_INFO", "Supplement evidence"],
+    ["resubmit", "REJECTED", "Resubmit evidence"],
+  ] as const)("routes a confirmed %s to the new submission digest", async (kind, verdict, label) => {
+    let written = false
+    let submitted: EvidenceInput[] = []
+    const prior = submission(verdict, { freshnessDeadline: "1900000000" })
+    const contract = fakeContract(prior)
+    vi.mocked(contract.reads.milestone).mockImplementation(async () => written ? milestone({ currentSubmissionId: "99", submissionCount: 2 }) : milestone())
+    vi.mocked(contract.reads.submission).mockImplementation(async (id) => id === "99" ? submission("NONE", { id: "99", digest: "99", revision: 2, evidence: kind === "supplement" ? [...prior.evidence, ...submitted] : submitted }) : prior)
+    const write = async (_first: unknown, evidence: EvidenceInput[]) => { submitted = evidence; written = true; return TX_HASH }
+    if (kind === "supplement") vi.mocked(contract.writes.supplementEvidence).mockImplementation(write as never)
+    else vi.mocked(contract.writes.resubmitEvidence).mockImplementation((async (_projectId: string, _index: number, evidence: EvidenceInput[]) => write(_projectId, evidence)) as never)
+    renderDetail(prior, BUILDER, 1_800_000_400, undefined, undefined, contract)
+    const user = userEvent.setup()
+    await user.selectOptions(await screen.findByLabelText("Evidence 1 source kind"), "RELEASE")
+    await user.type(screen.getByLabelText("Evidence 1 URL"), "https://github.com/example/compiler/releases/tag/v2")
+    await user.type(screen.getByLabelText("Evidence 1 subject"), "github.com/example/compiler")
+    await user.type(screen.getByLabelText("Evidence 1 version"), "v2")
+    await user.type(screen.getByLabelText("Evidence 1 observed at"), "2027-01-15T15:01")
+    await user.click(screen.getByRole("button", { name: label }))
+
+    expect(await screen.findByTestId("location")).toHaveTextContent("/submissions/99")
   })
 })

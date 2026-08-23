@@ -240,7 +240,128 @@ function assertWalletReady(wallet: ReturnType<typeof useWallet>) {
   }
 }
 
-export function useMilestoneActions(contract: MilestoneProofContract | null) {
+interface AuthoritativeActionContext {
+  project: ProjectView
+  milestone: MilestoneView
+  submission?: SubmissionView
+}
+
+function assertCurrentProjectContext(project: ProjectView, milestone: MilestoneView) {
+  if (project.status !== "ACTIVE") throw new Error("Project is not active.")
+  if (project.currentMilestone !== milestone.index) throw new Error("Milestone is not the current project milestone.")
+  if (milestone.projectId !== project.id) throw new Error("Milestone does not belong to this project.")
+}
+
+function assertActionAllowed(action: MilestoneAction, actor: string, now: number, context: AuthoritativeActionContext) {
+  const { project, milestone, submission } = context
+  assertCurrentProjectContext(project, milestone)
+  const isBuilder = actor === project.builder
+  const isParty = isBuilder || actor === project.sponsor
+  if (action.kind === "expire") {
+    const expiryAllowed = milestone.status === "OPEN"
+      ? now >= Number(milestone.deadline)
+      : milestone.status === "SUBMITTED" && submission?.verdict === "REJECTED"
+        ? now >= Number(milestone.deadline)
+        : milestone.status === "SUBMITTED" && submission?.verdict === "REQUEST_MORE_INFO"
+          ? now >= Number(submission.freshnessDeadline)
+          : false
+    if (!expiryAllowed) throw new Error("Milestone is not eligible for expiry.")
+    return
+  }
+  if (action.kind === "submit") {
+    if (!isBuilder) throw new Error("Only the frozen builder can submit evidence.")
+    if (milestone.status !== "OPEN") throw new Error("Milestone is not open.")
+    if (milestone.submissionCount >= 3) throw new Error("Submission attempts are exhausted.")
+    if (now >= Number(milestone.deadline)) throw new Error("Milestone deadline has elapsed.")
+    return
+  }
+  if (!submission
+    || submission.projectId !== project.id
+    || submission.milestoneIndex !== milestone.index
+    || milestone.status !== "SUBMITTED"
+    || milestone.currentSubmissionId !== submission.id) {
+    throw new Error("Submission is not the authoritative current submission.")
+  }
+  if (action.kind === "resolve") {
+    if (!isParty) throw new Error("Only a project party can resolve this submission.")
+    if (submission.verdict !== "NONE") throw new Error("Submission is already resolved.")
+    return
+  }
+  if (action.kind === "retry") {
+    if (!isParty) throw new Error("Only a project party can retry resolution.")
+    if (submission.verdict !== "UNRESOLVED") throw new Error("Submission is not unresolved.")
+    if (submission.resolutionCount >= 3) throw new Error("Resolution attempts are exhausted.")
+    if (now < Number(submission.nextRetryAt)) throw new Error("Resolution retry cooldown has not elapsed.")
+    return
+  }
+  if (!isBuilder) throw new Error("Only the frozen builder can create an evidence revision.")
+  if (milestone.submissionCount >= 3) throw new Error("Submission attempts are exhausted.")
+  if (action.kind === "resubmit") {
+    if (submission.verdict !== "REJECTED") throw new Error("Current submission is not rejected.")
+    if (now >= Number(milestone.deadline)) throw new Error("Milestone deadline has elapsed.")
+    return
+  }
+  if (submission.verdict !== "REQUEST_MORE_INFO") throw new Error("Current submission does not request more information.")
+  if (now >= Number(submission.freshnessDeadline)) throw new Error("Information window has elapsed.")
+  if (submission.evidence.length + action.evidence.length > 4) throw new Error("Evidence item limit would be exceeded.")
+}
+
+async function loadAuthoritativeActionContext(
+  contract: MilestoneProofContract,
+  action: MilestoneAction,
+): Promise<AuthoritativeActionContext> {
+  const [project, milestone] = await Promise.all([
+    contract.reads.project(action.project.id),
+    contract.reads.milestone(action.project.id, action.milestone.index),
+  ])
+  if (action.kind === "submit") return { project, milestone }
+  const submissionId = action.submission?.id ?? milestone.currentSubmissionId
+  const submission = submissionId && submissionId !== "0"
+    ? await contract.reads.submission(submissionId)
+    : undefined
+  return { project, milestone, submission }
+}
+
+async function verifyResolutionConsequences(
+  contract: MilestoneProofContract,
+  before: AuthoritativeActionContext,
+  submission: SubmissionView,
+) {
+  const [project, milestone] = await Promise.all([
+    contract.reads.project(before.project.id),
+    contract.reads.milestone(before.project.id, before.milestone.index),
+  ])
+  if (submission.verdict === "APPROVED") {
+    if (milestone.status !== "APPROVED") throw new Error("Approved verdict did not approve the milestone.")
+    const nextIndex = before.milestone.index + 1
+    if (nextIndex >= before.project.milestoneCount) {
+      if (project.status !== "COMPLETED" || project.currentMilestone !== before.milestone.index) {
+        throw new Error("Approved final milestone did not complete the project.")
+      }
+      return
+    }
+    if (project.status !== "ACTIVE" || project.currentMilestone !== nextIndex) {
+      throw new Error("Approved milestone did not advance the project.")
+    }
+    const nextMilestone = await contract.reads.milestone(before.project.id, nextIndex)
+    if (nextMilestone.status !== "OPEN") throw new Error("Approved milestone did not open the next milestone.")
+    return
+  }
+  if (submission.verdict === "REJECTED" && before.milestone.submissionCount >= 3) {
+    if (project.status !== "FAILED" || milestone.status !== "FAILED") {
+      throw new Error("Terminal rejection did not fail the project and milestone.")
+    }
+    return
+  }
+  if (project.status !== "ACTIVE"
+    || project.currentMilestone !== before.milestone.index
+    || milestone.status !== "SUBMITTED"
+    || milestone.currentSubmissionId !== submission.id) {
+    throw new Error("Nonterminal verdict did not preserve the active submitted milestone.")
+  }
+}
+
+export function useMilestoneActions(contract: MilestoneProofContract | null, now: () => number = () => Date.now() / 1_000) {
   const wallet = useWallet()
   const queryClient = useQueryClient()
   const [transactionState, setTransactionState] = useState<TransactionState>({
@@ -253,17 +374,15 @@ export function useMilestoneActions(contract: MilestoneProofContract | null) {
       if (!contract) throw new Error("The contract is not configured.")
       const actor = wallet.account
       let expectedDigest = ""
-      const priorSubmissionId = action.kind === "submit" ? action.milestone.currentSubmissionId : action.submission?.id ?? "0"
-      const priorResolutionCount = "submission" in action && action.submission ? action.submission.resolutionCount : 0
-      const resolutionSubmission = "submission" in action ? action.submission : undefined
-      const expectedEvidence = action.kind === "submit" || action.kind === "resubmit"
-        ? action.evidence
-        : action.kind === "supplement"
-          ? [...action.submission.evidence, ...action.evidence]
-          : undefined
+      let before: AuthoritativeActionContext | undefined
 
       const result = await runWriteAndReadback<SubmissionReadbackConfirmation | MilestoneView>({
-        assertReady: () => assertWalletReady(wallet),
+        assertReady: async () => {
+          assertWalletReady(wallet)
+          if (!actor) throw new Error("Connected wallet account is unavailable.")
+          before = await loadAuthoritativeActionContext(contract, action)
+          assertActionAllowed(action, actor.toLowerCase(), Math.floor(now()), before)
+        },
         submit: async () => {
           switch (action.kind) {
             case "submit": return contract.writes.submitEvidence(action.project.id, action.milestone.index, action.evidence, createClientNonce("submit"))
@@ -276,6 +395,7 @@ export function useMilestoneActions(contract: MilestoneProofContract | null) {
         },
         waitForFinalized: contract.writes.waitForFinalized,
         readback: async () => {
+          if (!before) throw new Error("Authoritative preflight context is unavailable.")
           if (action.kind === "expire") {
             const [project, milestone] = await Promise.all([
               contract.reads.project(action.project.id),
@@ -287,8 +407,17 @@ export function useMilestoneActions(contract: MilestoneProofContract | null) {
             return milestone
           }
 
+          const priorSubmissionId = before.submission?.id ?? before.milestone.currentSubmissionId
+          const expectedEvidence = action.kind === "submit" || action.kind === "resubmit"
+            ? action.evidence
+            : action.kind === "supplement" && before.submission
+              ? [...before.submission.evidence, ...action.evidence]
+              : undefined
           if (expectedEvidence) {
-            const milestone = await contract.reads.milestone(action.project.id, action.milestone.index)
+            const [project, milestone] = await Promise.all([
+              contract.reads.project(action.project.id),
+              contract.reads.milestone(action.project.id, action.milestone.index),
+            ])
             expectedDigest = milestone.currentSubmissionId
             if (!expectedDigest || expectedDigest === "0" || expectedDigest === priorSubmissionId) {
               throw new Error("The contract did not return a new current submission digest.")
@@ -304,17 +433,24 @@ export function useMilestoneActions(contract: MilestoneProofContract | null) {
               || !evidenceMatches(submission.evidence, expectedEvidence)) {
               throw new Error("Authoritative submission readback does not match the submitted evidence.")
             }
+            if (project.status !== "ACTIVE"
+              || project.currentMilestone !== action.milestone.index
+              || milestone.status !== "SUBMITTED") {
+              throw new Error("New evidence revision did not preserve the active submitted milestone.")
+            }
             return { submittedDigest: expectedDigest, submission }
           }
 
+          const resolutionSubmission = before.submission
           if (!resolutionSubmission) throw new Error("Resolution submission context is missing.")
           const submission = await contract.reads.submission(resolutionSubmission.id)
           if (submission.id !== resolutionSubmission.id || submission.digest !== resolutionSubmission.id) {
             throw new Error("Authoritative submission digest changed during resolution.")
           }
-          if (submission.verdict === "NONE" || submission.resolutionCount <= priorResolutionCount) {
+          if (submission.verdict === "NONE" || submission.resolutionCount <= resolutionSubmission.resolutionCount) {
             throw new Error("Resolution readback did not confirm a new contract verdict.")
           }
+          await verifyResolutionConsequences(contract, before, submission)
           return { submittedDigest: submission.id, submission }
         },
       }, setTransactionState)

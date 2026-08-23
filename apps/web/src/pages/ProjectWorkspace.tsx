@@ -32,22 +32,35 @@ function OverviewPanel({ milestones }: { milestones: MilestoneView[] }) {
   )
 }
 
-function WorkspaceContent({ contract, project }: { contract: MilestoneProofContract, project: ProjectView }) {
+function WorkspaceContent({ contract, project, now }: { contract: MilestoneProofContract, project: ProjectView, now: () => number }) {
   const milestoneQueries = useMilestones(contract, project)
   const wallet = useWallet()
-  const actions = useMilestoneActions(contract)
+  const actions = useMilestoneActions(contract, now)
   const [tab, setTab] = useState<WorkspaceTab>("Overview")
+  const [actionError, setActionError] = useState("")
   if (milestoneQueries.isPending) return <section aria-live="polite" className="workspace-loading">Loading authoritative milestones…</section>
   if (milestoneQueries.error || !milestoneQueries.data) return <section className="form-alert" role="alert">{milestoneQueries.error instanceof Error ? milestoneQueries.error.message : "Milestone readback failed."}</section>
   const milestones = milestoneQueries.data
   const submissions = milestones.filter(({ currentSubmissionId }) => currentSubmissionId !== "0")
   const currentMilestone = milestones[project.currentMilestone]
-  const isBuilder = wallet.account?.toLowerCase() === project.builder
+  const walletReady = wallet.status === "CONNECTED"
+  const isBuilder = walletReady && wallet.account?.toLowerCase() === project.builder
+  const canExpireOpen = walletReady
+    && project.status === "ACTIVE"
+    && currentMilestone?.status === "OPEN"
+    && Math.floor(now()) >= Number(currentMilestone.deadline)
   const submitEvidence = async (evidence: EvidenceInput[]): Promise<EvidenceReadbackConfirmation> => {
     if (!currentMilestone) throw new Error("The current milestone is unavailable.")
     const result = await actions.mutateAsync({ kind: "submit", project, milestone: currentMilestone, evidence })
     if ("submittedDigest" in result) return result
     throw new Error("Submission readback was not returned.")
+  }
+  const expireCurrentMilestone = async () => {
+    if (!currentMilestone) return
+    setActionError("")
+    try { await actions.mutateAsync({ kind: "expire", project, milestone: currentMilestone }) } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Milestone expiry failed.")
+    }
   }
 
   return (
@@ -72,6 +85,7 @@ function WorkspaceContent({ contract, project }: { contract: MilestoneProofContr
         {tab === "Overview" && <OverviewPanel milestones={milestones} />}
         {tab === "Evidence" && currentMilestone?.status === "OPEN" && isBuilder && <EvidenceEditor allowedSources={currentMilestone.allowedSources} disabled={actions.isPending} onSubmit={submitEvidence} submitLabel="Submit evidence" />}
         {tab === "Evidence" && currentMilestone?.status === "OPEN" && !isBuilder && <div className="truthful-empty"><FileCheck2 size={20} /><h2>Builder action required</h2><p>Only the frozen builder can submit evidence for this open milestone.</p></div>}
+        {tab === "Evidence" && canExpireOpen && <div className="permissionless-expiry">{actionError && <div className="form-alert" role="alert">{actionError}</div>}<p>The frozen deadline has elapsed. Any connected Studionet wallet can close this milestone.</p><button className="secondary-button" disabled={actions.isPending} onClick={() => void expireCurrentMilestone()} type="button">Expire milestone</button></div>}
         {tab === "Evidence" && currentMilestone?.status !== "OPEN" && <div className="truthful-empty"><FileCheck2 size={20} /><h2>Evidence belongs to submissions</h2><p>{submissions.length ? "Open a submission to inspect its authoritative evidence readback." : "No milestone currently references an on-chain submission."}</p></div>}
         {tab === "Submissions" && (submissions.length ? <div className="submission-index">{submissions.map((milestone) => <Link className="submission-row" key={milestone.currentSubmissionId} to={`/submissions/${milestone.currentSubmissionId}`}><span>Milestone {milestone.index + 1}</span><strong>Submission #{milestone.currentSubmissionId}</strong><StatusBadge status={milestone.status} /></Link>)}</div> : <div className="truthful-empty"><h2>No submissions yet</h2><p>The contract has not recorded a submission for this project.</p></div>)}
         {tab === "On-chain activity" && (actions.transactionState.phase === "DISCONNECTED" ? <div className="truthful-empty"><h2>No activity feed available</h2><p>No on-chain activity is available from contract reads yet.</p></div> : <TransactionPanel state={actions.transactionState} />)}
@@ -82,9 +96,10 @@ function WorkspaceContent({ contract, project }: { contract: MilestoneProofContr
 
 export interface ProjectWorkspaceProps {
   contract?: MilestoneProofContract
+  now?: () => number
 }
 
-export function ProjectWorkspace({ contract: contractOverride }: ProjectWorkspaceProps) {
+export function ProjectWorkspace({ contract: contractOverride, now = () => Date.now() / 1_000 }: ProjectWorkspaceProps) {
   const { projectId = "" } = useParams()
   const { contract, configurationError } = useMilestoneProofContract(contractOverride)
   const projectQuery = useProject(contract, projectId)
@@ -92,5 +107,5 @@ export function ProjectWorkspace({ contract: contractOverride }: ProjectWorkspac
   if (configurationError) return <section className="form-alert" role="alert">{configurationError}</section>
   if (projectQuery.isPending) return <section aria-live="polite" className="workspace-loading">Loading authoritative project readback…</section>
   if (projectQuery.error || !projectQuery.data || !contract) return <section className="form-alert" role="alert">{projectQuery.error instanceof Error ? projectQuery.error.message : "Project readback failed."}</section>
-  return <WorkspaceContent contract={contract} project={projectQuery.data} />
+  return <WorkspaceContent contract={contract} now={now} project={projectQuery.data} />
 }

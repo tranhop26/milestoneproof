@@ -172,6 +172,7 @@ button { color: inherit; }
 .evidence-editor-header p { margin: 6px 0 0; color: var(--faint); font-size: 11px; }
 .evidence-editor-header > span, .revision-chip, .ready-chip { padding: 5px 8px; border: 1px solid #3f3f46; border-radius: 999px; color: #a1a1aa; background: #18181b; font-size: 9px; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
 .ready-chip { color: #6ee7b7; border-color: rgba(52,211,153,.3); background: rgba(16,185,129,.07); }
+.wrong-network-chip { padding: 5px 8px; border: 1px solid rgba(248,113,113,.35); border-radius: 999px; color: #fca5a5; background: rgba(239,68,68,.07); font-size: 9px; font-weight: 700; }
 .evidence-row-list { display: grid; gap: 12px; }
 .evidence-row { position: relative; display: grid; gap: 12px; margin: 0; padding: 18px; border: 1px solid #29292d; border-radius: 9px; background: #141416; }
 .evidence-row legend { padding: 0 7px; color: #71717a; font-size: 9px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
@@ -213,6 +214,9 @@ button { color: inherit; }
 .action-stack { display: grid; justify-items: start; gap: 8px; }
 .action-stack p, .read-only-note, .terminal-note { margin: 0; color: #a1a1aa; font-size: 11px; line-height: 1.6; }
 .terminal-note { padding: 12px 14px; border: 1px solid #3f3f46; border-radius: 8px; background: #161618; }
+.network-guidance { margin: 0; padding: 12px 14px; border: 1px solid rgba(248,113,113,.3); border-radius: 8px; color: #fca5a5; background: rgba(239,68,68,.06); font-size: 11px; }
+.permissionless-expiry { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 16px; padding: 14px; border: 1px solid rgba(245,158,11,.25); border-radius: 9px; background: rgba(245,158,11,.045); }
+.permissionless-expiry p { margin: 0; color: #fcd34d; font-size: 11px; line-height: 1.5; }
 
 .status-badge { display: inline-flex; align-items: center; gap: 5px; min-height: 23px; padding: 0 8px; border: 1px solid currentColor; border-radius: 999px; font-size: 10px; font-weight: 650; white-space: nowrap; }
 .status-success { color: #6ee7b7; background: rgba(16,185,129,.08); }
@@ -278,6 +282,7 @@ button { color: inherit; }
   .milestone-node:not(:last-child)::after { top: 21px; left: 9px; width: 1px; height: calc(100% - 4px); }
   .workspace-tabs { margin-right: -14px; }
   .evidence-editor-actions { align-items: stretch; flex-direction: column; }
+  .permissionless-expiry { align-items: stretch; flex-direction: column; }
   .revision-bar { grid-template-columns: auto 1fr; }
   .revision-bar > svg:last-child { display: none; }
   .evidence-readback-list dl > div { grid-template-columns: 1fr; gap: 4px; }
