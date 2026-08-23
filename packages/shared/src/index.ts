@@ -270,10 +270,10 @@ function matchesIpv6Ranges(address: ipaddr.IPv6, ranges: readonly (readonly [str
 }
 
 function isGloballyRoutableIpv6(host: string): boolean {
-  if (!/^\[[0-9a-f:]+(?:%25[^%\]]+)?\]$/i.test(host)) {
+  if (!/^\[[0-9a-f:]+(?:%[^%\]]+)?\]$/i.test(host)) {
     return false
   }
-  const literal = host.slice(1, -1).split("%25", 1)[0]
+  const literal = host.slice(1, -1).split("%", 1)[0]
   const address = ipaddr.IPv6.parse(literal)
   if (address.isIPv4MappedAddress()) {
     const mapped = address.toIPv4Address().octets
@@ -320,7 +320,7 @@ function rawUrlAuthority(url: string, field: string): { host: string, port: numb
     [host, rawPort = ""] = parts
   }
   const normalizedHost = host.toLowerCase().replace(/\.+$/, "")
-  const scopedIpv6 = /^\[[0-9a-f:]+%25[^%\]]+\]$/i.test(normalizedHost)
+  const scopedIpv6 = /^\[[0-9a-f:]+%[^%\]]+\]$/i.test(normalizedHost)
   if (!host || (host.includes("%") && !scopedIpv6) || (rawPort && Number(rawPort) !== 443)) {
     throw new ContractShapeError(`${field} must be a public HTTPS URL`)
   }
@@ -335,7 +335,7 @@ function publicEvidenceUrl(value: unknown, field: string): string {
   const { host, port } = rawUrlAuthority(raw, field)
   const isReservedHost = RESERVED_HOSTS.some((reserved) => host === reserved || host.endsWith(`.${reserved}`))
   const isNumericHost = /^[0-9.]+$/.test(host)
-  const isIpv6Host = /^\[[0-9a-f:]+(?:%25[^%\]]+)?\]$/i.test(host)
+  const isIpv6Host = /^\[[0-9a-f:]+(?:%[^%\]]+)?\]$/i.test(host)
   const validDnsName = host.split(".").length >= 2
     && host.split(".").every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label))
   if (
@@ -349,7 +349,10 @@ function publicEvidenceUrl(value: unknown, field: string): string {
     throw new ContractShapeError(`${field} must be a public HTTPS URL`)
   }
 
-  if (!host.includes("%25")) {
+  if (raw.includes("#")) {
+    throw new ContractShapeError(`${field} must be a public HTTPS URL`)
+  }
+  if (!host.includes("%")) {
     let parsed: URL
     try {
       parsed = new URL(raw)
