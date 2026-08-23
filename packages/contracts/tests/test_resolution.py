@@ -26,6 +26,11 @@ from conftest import (
 
 
 EVIDENCE_URL = "https://github.com/acme/milestoneproof/commit/0123456789abcdef0123456789abcdef01234567"
+REFERENCED_STORAGE_GLOBAL = None
+
+
+def _function_referencing_storage_global():
+    return REFERENCED_STORAGE_GLOBAL
 
 
 @pytest.fixture
@@ -93,6 +98,8 @@ def _assert_capture_graph_is_primitive_only(root):
                 f"forbidden storage object in nondeterministic capture graph at {path}: "
                 f"{type(value).__name__}"
             )
+        if isinstance(value, type):
+            return
         if isinstance(value, ModuleType):
             return
         if isinstance(value, FunctionType):
@@ -102,6 +109,9 @@ def _assert_capture_graph_is_primitive_only(root):
             visit(value.__kwdefaults__, f"{path}.__kwdefaults__")
             visit(value.__annotations__, f"{path}.__annotations__")
             visit(value.__dict__, f"{path}.__dict__")
+            for name in value.__code__.co_names:
+                if name in value.__globals__:
+                    visit(value.__globals__[name], f"{path}.__globals__[{name!r}]")
             return
         if isinstance(value, BuiltinFunctionType):
             return
@@ -420,6 +430,25 @@ def test_capture_graph_inspector_rejects_nested_storage_proxy():
         AssertionError, match="forbidden storage object in nondeterministic capture graph"
     ):
         _assert_capture_graph_is_primitive_only(nested_storage)
+
+
+def test_capture_graph_inspector_rejects_storage_in_referenced_function_global():
+    global REFERENCED_STORAGE_GLOBAL
+    REFERENCED_STORAGE_GLOBAL = {
+        "safe_outer": [GL.storage.inmem_allocate(GL.TreeMap[str, bool])]
+    }
+    serialized_function = cloudpickle.loads(
+        cloudpickle.dumps(_function_referencing_storage_global)
+    )
+
+    try:
+        with pytest.raises(
+            AssertionError,
+            match="forbidden storage object in nondeterministic capture graph",
+        ):
+            _assert_capture_graph_is_primitive_only(serialized_function)
+    finally:
+        REFERENCED_STORAGE_GLOBAL = None
 
 
 @pytest.mark.parametrize("phase", ["leader", "validator", "consensus"])
