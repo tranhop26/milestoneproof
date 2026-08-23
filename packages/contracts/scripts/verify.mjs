@@ -16,7 +16,7 @@ import {
   normalizeConfig,
   redactError,
   resolveNetwork,
-  sha256,
+  sourceSha256,
   transactionSender,
 } from "./lib.mjs"
 
@@ -37,7 +37,7 @@ export async function verify({ env = process.env, argv = process.argv.slice(2) }
     throw new Error("Manifest verification transaction does not match the deployment transaction")
   }
   const localSource = await readFile(CONTRACT_PATH, "utf8")
-  const localHash = sha256(localSource)
+  const localHash = sourceSha256(localSource)
   if (manifest.sourceSha256 !== localHash) throw new Error("Local source hash does not match the manifest")
 
   const sdk = await loadSdk(env)
@@ -60,7 +60,7 @@ export async function verify({ env = process.env, argv = process.argv.slice(2) }
     functionName: "get_config",
     args: [],
   }))
-  const deployedHash = sha256(await client.getContractCode(contractAddress))
+  const deployedHash = sourceSha256(await client.getContractCode(contractAddress))
   if (deployedHash !== localHash) throw new Error("Deployed source hash mismatch")
   if (JSON.stringify(configReadback) !== JSON.stringify(manifest.verification?.configReadback)) {
     throw new Error("Readback does not match the deployment manifest")

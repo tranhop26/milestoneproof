@@ -495,7 +495,7 @@ class MilestoneProof(gl.Contract):
             raise gl.vm.UserError("nonce already used")
 
         now = u64(_now())
-        frozen_milestones = gl.storage.inmem_allocate(DynArray[Milestone])
+        frozen_milestones = []
         for index, definition in enumerate(milestones):
             frozen_milestones.append(self._freeze_milestone(definition, index, now))
 
@@ -566,7 +566,7 @@ class MilestoneProof(gl.Contract):
         return u256(
             len(
                 self.sponsor_project_ids.get(
-                    sponsor, gl.storage.inmem_allocate(DynArray[u256])
+                    sponsor, []
                 )
             )
         )
@@ -576,7 +576,7 @@ class MilestoneProof(gl.Contract):
         return u256(
             len(
                 self.builder_project_ids.get(
-                    builder, gl.storage.inmem_allocate(DynArray[u256])
+                    builder, []
                 )
             )
         )
@@ -585,7 +585,7 @@ class MilestoneProof(gl.Contract):
     def get_sponsor_project_ids(self, sponsor: gl.Address, offset: u256, limit: u8) -> list:
         return self._project_id_page(
             self.sponsor_project_ids.get(
-                sponsor, gl.storage.inmem_allocate(DynArray[u256])
+                sponsor, []
             ),
             offset,
             limit,
@@ -595,7 +595,7 @@ class MilestoneProof(gl.Contract):
     def get_builder_project_ids(self, builder: gl.Address, offset: u256, limit: u8) -> list:
         return self._project_id_page(
             self.builder_project_ids.get(
-                builder, gl.storage.inmem_allocate(DynArray[u256])
+                builder, []
             ),
             offset,
             limit,
@@ -911,8 +911,8 @@ class MilestoneProof(gl.Contract):
             submitted_at,
             frozen_evidence,
             digest,
-            gl.storage.inmem_allocate(DynArray[bool]),
-            gl.storage.inmem_allocate(DynArray[u8]),
+            [],
+            [],
             False,
             False,
             False,
@@ -943,7 +943,7 @@ class MilestoneProof(gl.Contract):
         if len(evidence) > MAX_EVIDENCE_ITEMS:
             raise gl.vm.UserError("too many evidence items")
 
-        frozen_evidence = gl.storage.inmem_allocate(DynArray[Evidence])
+        frozen_evidence = []
         seen = {}
         for item in evidence:
             if not isinstance(item, list) or len(item) != 5:
@@ -997,9 +997,8 @@ class MilestoneProof(gl.Contract):
             "REQUEST_MORE_INFO": REQUEST_MORE_INFO,
             "UNRESOLVED": UNRESOLVED,
         }
-        criteria_met = gl.storage.inmem_allocate(DynArray[bool])
-        criteria_met.extend(resolution["criteria_met"])
-        missing_criteria = gl.storage.inmem_allocate(DynArray[u8])
+        criteria_met = list(resolution["criteria_met"])
+        missing_criteria = []
         for index in resolution["missing_criteria"]:
             missing_criteria.append(u8(index))
         integrity = resolution["integrity"]
@@ -1068,10 +1067,8 @@ class MilestoneProof(gl.Contract):
         return "".join(f"{len(field.encode('utf-8'))}:{field}" for field in fields)
 
     def _freeze_milestone(self, definition: dict, index: int, now: u64) -> Milestone:
-        criteria = gl.storage.inmem_allocate(DynArray[str])
-        criteria.extend(definition["criteria"])
-        allowed_sources = gl.storage.inmem_allocate(DynArray[str])
-        allowed_sources.extend(definition["allowed_sources"])
+        criteria = list(definition["criteria"])
+        allowed_sources = list(definition["allowed_sources"])
         state = OPEN if index == 0 else LOCKED
         return Milestone(definition["title"], criteria, allowed_sources, u64(definition["deadline"]), state, now if state == OPEN else u64(0), u8(0), u256(0))
 
@@ -1114,9 +1111,9 @@ class MilestoneProof(gl.Contract):
     def _append_project_id(self, index: TreeMap, actor: gl.Address, project_id: u256) -> None:
         actor_projects = index.get(actor)
         if actor_projects is None:
-            actor_projects = gl.storage.inmem_allocate(DynArray[u256])
-            index[actor] = actor_projects
-        actor_projects.append(project_id)
+            index[actor] = [project_id]
+        else:
+            actor_projects.append(project_id)
 
     def _project_id_page(self, project_ids: DynArray, offset: u256, limit: u8) -> list:
         if int(limit) < 1 or int(limit) > MAX_PAGE_SIZE:

@@ -74,6 +74,7 @@ async function wait(client, sdk, hash, expected) {
 
 async function successfulWrite(client, sdk, input) {
   const hash = assertHash(await client.writeContract(input))
+  console.log(`Submitted ${input.functionName}: ${hash}`)
   await wait(client, sdk, hash, sdk.ExecutionResult.FINISHED_WITH_RETURN)
   return {
     hash,
@@ -84,6 +85,7 @@ async function successfulWrite(client, sdk, input) {
 
 async function rejectedWrite(client, sdk, input) {
   const hash = assertHash(await client.writeContract(input))
+  console.log(`Submitted expected rejection ${input.functionName}: ${hash}`)
   const receipt = await wait(client, sdk, hash, sdk.ExecutionResult.FINISHED_WITH_ERROR)
   return {
     hash,

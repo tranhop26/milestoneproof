@@ -19,7 +19,7 @@ import {
   redactError,
   requirePrivateKey,
   resolveNetwork,
-  sha256,
+  sourceSha256 as hashSource,
   transactionSender,
   validateDeploymentManifest,
   writeJsonAtomically,
@@ -39,7 +39,7 @@ export async function deploy({ env = process.env, argv = process.argv.slice(2) }
   const deployer = sdk.createAccount(privateKey)
   const deployerAddress = deployer.address
   const source = await readFile(CONTRACT_PATH, "utf8")
-  const sourceSha256 = sha256(source)
+  const sourceSha256 = hashSource(source)
 
   console.log(`Network: ${network.name}`)
   console.log(`Deployer: ${deployerAddress}`)
@@ -83,7 +83,7 @@ export async function deploy({ env = process.env, argv = process.argv.slice(2) }
     args: [],
   }))
   const deployedSource = await client.getContractCode(contractAddress)
-  if (sha256(deployedSource) !== sourceSha256) throw new Error("Deployed source hash mismatch")
+  if (hashSource(deployedSource) !== sourceSha256) throw new Error("Deployed source hash mismatch")
 
   const verifiedAt = new Date().toISOString()
   const manifest = {

@@ -29,6 +29,10 @@ export function sha256(value) {
   return createHash("sha256").update(value).digest("hex")
 }
 
+export function sourceSha256(source) {
+  return sha256(source.replace(/\r\n/gu, "\n"))
+}
+
 export function resolveNetwork(env = process.env) {
   const name = env.GENLAYER_NETWORK || env.VITE_GENLAYER_NETWORK || "studionet"
   const definition = NETWORKS[name]

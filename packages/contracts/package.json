@@ -6,7 +6,7 @@
     "deploy:dry-run": "node scripts/deploy.mjs --dry-run",
     "verify": "node scripts/verify.mjs",
     "e2e:live": "node scripts/e2e.mjs",
-    "test": "python -c \"import os, sys, pytest; os.environ['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'; raise SystemExit(pytest.main(['tests', *sys.argv[1:]]))\""
+    "test": "python -c \"import os, sys, pytest; os.environ['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'; raise SystemExit(pytest.main(['tests', *sys.argv[1:]]))\" && python scripts/direct_runtime_probe.py"
   },
   "dependencies": {
     "ajv": "8.17.1",

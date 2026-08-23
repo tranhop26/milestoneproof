@@ -77,7 +77,9 @@ export const createClient = () => {
     getContractCode: async () => {
       log("getContractCode");
       if (process.env.FAKE_CODE_MISMATCH === "YES") return "# different source\\n";
-      return readFileSync(process.env.CONTRACT_SOURCE_PATH, "utf8");
+      const source = readFileSync(process.env.CONTRACT_SOURCE_PATH, "utf8");
+      if (process.env.FAKE_CODE_CRLF === "YES") return source.replace(/\\r?\\n/g, "\\r\\n");
+      return source;
     },
   };
 };
@@ -486,6 +488,21 @@ def test_verify_rechecks_finalized_transaction_source_and_config(tmp_path):
         "read:get_config",
         "getContractCode",
     ]
+
+
+def test_verify_accepts_source_with_only_crlf_transport_normalization(tmp_path):
+    fake = _fake_sdk(tmp_path)
+    manifest_path = tmp_path / "manifest.json"
+    env = _fake_env(tmp_path, fake, manifest_path)
+    env["CONFIRM_DEPLOY"] = "YES"
+    deployed = _run(DEPLOY, env=env)
+    assert deployed.returncode == 0, deployed.stderr
+    env["FAKE_CODE_CRLF"] = "YES"
+
+    verified = _run(VERIFY, "--manifest", str(manifest_path), env=env)
+
+    assert verified.returncode == 0, verified.stdout + verified.stderr
+    assert "Source hash verified" in verified.stdout
 
 
 def test_verify_fails_closed_when_deployed_source_differs(tmp_path):
