@@ -14,6 +14,8 @@ import {
 import type { FinalizedExecution } from "./transaction"
 
 export const STUDIONET_EXPLORER_ADDRESS_URL = "https://explorer-studio.genlayer.com/address"
+const U64_MAX = (1n << 64n) - 1n
+const U256_MAX = (1n << 256n) - 1n
 
 export type ContractAddress = `0x${string}`
 export type TransactionHash = `0x${string}`
@@ -96,7 +98,9 @@ function positiveId(value: string, field: string): bigint {
   if (!/^[1-9][0-9]*$/.test(value)) {
     throw new ContractInputError(`${field} must be a positive integer`)
   }
-  return BigInt(value)
+  const parsed = BigInt(value)
+  if (parsed > U256_MAX) throw new ContractInputError(`${field} exceeds u256`)
+  return parsed
 }
 
 function milestoneIndex(value: number): number {
@@ -116,6 +120,7 @@ function nonNegativeInteger(value: unknown, field: string): bigint {
 function positiveReturnedId(value: unknown, field: string): string {
   const parsed = nonNegativeInteger(value, field)
   if (parsed === 0n) throw new ContractInputError(`${field} must be a positive integer`)
+  if (parsed > U256_MAX) throw new ContractInputError(`${field} exceeds u256`)
   return parsed.toString()
 }
 
@@ -146,7 +151,9 @@ function validateCreateProject(input: CreateProjectInput, now: number): {
     if (parsed.allowedSources.length < 1 || parsed.allowedSources.length > 4) {
       throw new ContractInputError(`milestone ${index + 1} must allow at least one evidence source`)
     }
-    const deadline = nonNegativeInteger(parsed.deadline, `milestone ${index + 1} deadline`)
+    const deadlineField = `milestone ${index + 1} deadline`
+    const deadline = nonNegativeInteger(parsed.deadline, deadlineField)
+    if (deadline > U64_MAX) throw new ContractInputError(`${deadlineField} exceeds u64`)
     if (deadline <= BigInt(Math.floor(now))) {
       throw new ContractInputError(`milestone ${index + 1} deadline must be in the future`)
     }
@@ -155,7 +162,7 @@ function validateCreateProject(input: CreateProjectInput, now: number): {
       criteria: parsed.criteria.map((criterion, criterionIndex) => requiredText(
         criterion,
         `milestone ${index + 1} criterion ${criterionIndex + 1}`,
-        1_000,
+        500,
       )),
       allowed_sources: parsed.allowedSources,
       deadline,

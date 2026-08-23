@@ -12,6 +12,8 @@ const CONTRACT = "0xc000000000000000000000000000000000000001" as const
 const SPONSOR = "0x1000000000000000000000000000000000000001" as const
 const BUILDER = "0x2000000000000000000000000000000000000002" as const
 const TX_HASH = `0x${"a".repeat(64)}` as `0x${string}`
+const U64_TOO_LARGE = (1n << 64n).toString()
+const U256_TOO_LARGE = (1n << 256n).toString()
 
 const projectShape = [
   1,
@@ -145,6 +147,36 @@ describe("MilestoneProof contract adapter", () => {
     expect(write.writeContract).not.toHaveBeenCalled()
   })
 
+  it("rejects criteria above the contract's 500-character limit before requesting a write client", async () => {
+    const getWriteClient = vi.fn(async () => client())
+    const contract = createMilestoneProofContract({
+      address: CONTRACT,
+      readClient: client(),
+      getWriteClient,
+      now: () => 1_800_000_000,
+    })
+
+    await expect(contract.writes.createProject(input({
+      milestones: [{ ...input().milestones[0], criteria: ["x".repeat(501)] }],
+    }), "nonce")).rejects.toThrow("criterion 1 is too long")
+    expect(getWriteClient).not.toHaveBeenCalled()
+  })
+
+  it("rejects a deadline outside the contract's u64 range before requesting a write client", async () => {
+    const getWriteClient = vi.fn(async () => client())
+    const contract = createMilestoneProofContract({
+      address: CONTRACT,
+      readClient: client(),
+      getWriteClient,
+      now: () => 1_800_000_000,
+    })
+
+    await expect(contract.writes.createProject(input({
+      milestones: [{ ...input().milestones[0], deadline: U64_TOO_LARGE }],
+    }), "nonce")).rejects.toThrow("deadline exceeds u64")
+    expect(getWriteClient).not.toHaveBeenCalled()
+  })
+
   it("rejects invalid IDs and actor addresses before any contract read", async () => {
     const read = client()
     const contract = createMilestoneProofContract({ address: CONTRACT, readClient: read })
@@ -153,6 +185,16 @@ describe("MilestoneProof contract adapter", () => {
     await expect(contract.reads.milestone("1", -1)).rejects.toThrow("milestone index")
     await expect(contract.reads.submission("01")).rejects.toThrow("submission id")
     await expect(contract.reads.actorProjects("not-an-address", "sponsor")).rejects.toThrow("actor")
+    expect(read.readContract).not.toHaveBeenCalled()
+  })
+
+  it("rejects positive IDs outside the contract's u256 range before any contract read", async () => {
+    const read = client()
+    const contract = createMilestoneProofContract({ address: CONTRACT, readClient: read })
+
+    await expect(contract.reads.project(U256_TOO_LARGE)).rejects.toThrow("project id exceeds u256")
+    await expect(contract.reads.submission(U256_TOO_LARGE)).rejects.toThrow("submission id exceeds u256")
+    await expect(contract.reads.milestone(U256_TOO_LARGE, 0)).rejects.toThrow("project id exceeds u256")
     expect(read.readContract).not.toHaveBeenCalled()
   })
 

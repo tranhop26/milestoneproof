@@ -1,5 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { MilestoneView, ProjectView } from "@milestoneproof/shared"
+import { parseMilestoneInput, type MilestoneView, type ProjectView } from "@milestoneproof/shared"
 import { useMemo, useState } from "react"
 
 import {
@@ -89,6 +89,29 @@ function projectMatchesInput(project: ProjectView, sponsor: string, input: Creat
     && project.milestoneCount === input.milestones.length
 }
 
+function sameStrings(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
+async function frozenMilestonesMatch(
+  contract: MilestoneProofContract,
+  projectId: string,
+  input: CreateProjectInput,
+): Promise<boolean> {
+  const frozen = await Promise.all(input.milestones.map((_, index) => (
+    contract.reads.milestone(projectId, index)
+  )))
+  return frozen.every((milestone, index) => {
+    const submitted = parseMilestoneInput(input.milestones[index])
+    return milestone.projectId === projectId
+      && milestone.index === index
+      && milestone.title === submitted.title.trim()
+      && sameStrings(milestone.criteria, submitted.criteria.map((criterion) => criterion.trim()))
+      && sameStrings(milestone.allowedSources, submitted.allowedSources)
+      && milestone.deadline === submitted.deadline
+  })
+}
+
 export function useCreateProject(contract: MilestoneProofContract | null) {
   const wallet = useWallet()
   const queryClient = useQueryClient()
@@ -123,6 +146,9 @@ export function useCreateProject(contract: MilestoneProofContract | null) {
           const project = await contract.reads.project(newestProjectId)
           if (!projectMatchesInput(project, sponsor, input)) {
             throw new Error("The newest sponsor project does not match the submitted project.")
+          }
+          if (!await frozenMilestonesMatch(contract, project.id, input)) {
+            throw new Error("The frozen milestone readback does not match the submitted project.")
           }
           return project
         },

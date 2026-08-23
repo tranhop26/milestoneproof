@@ -81,6 +81,7 @@ button { color: inherit; }
 .gate-icon { display: grid; width: 44px; height: 44px; margin-bottom: 24px; place-items: center; border: 1px solid rgba(52,211,153,.28); border-radius: 11px; color: var(--emerald); background: rgba(16,185,129,.08); }
 .connection-gate h1 { margin: 9px 0 10px; font-size: 32px; letter-spacing: -.04em; }
 .connection-gate > p:not(.eyebrow) { margin: 0 0 24px; color: var(--muted); line-height: 1.65; }
+.gate-alert { width: 100%; margin: 0 0 14px; }
 .create-layout { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 22px; align-items: start; }
 .creation-form { display: grid; gap: 14px; }
 .page-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 8px 4px 20px; }

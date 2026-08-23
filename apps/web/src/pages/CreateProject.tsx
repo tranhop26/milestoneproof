@@ -45,6 +45,16 @@ export function CreateProject({ contract: contractOverride }: CreateProjectProps
   const [description, setDescription] = useState("")
   const [milestones, setMilestones] = useState<MilestoneDraft[]>([emptyMilestone()])
   const [formError, setFormError] = useState("")
+  const [walletError, setWalletError] = useState("")
+
+  const runWalletRecovery = async (action: () => Promise<void>) => {
+    setWalletError("")
+    try {
+      await action()
+    } catch (error) {
+      setWalletError(error instanceof Error ? error.message : "The wallet action failed.")
+    }
+  }
 
   const updateMilestone = (index: number, patch: Partial<MilestoneDraft>) => {
     setMilestones((current) => current.map((milestone, position) => (
@@ -76,7 +86,8 @@ export function CreateProject({ contract: contractOverride }: CreateProjectProps
         <p className="eyebrow">Sponsor authorization</p>
         <h1>Connect your sponsor wallet</h1>
         <p>The connected address becomes the immutable project sponsor. Connect before defining the frozen scope.</p>
-        <button className="primary-button" disabled={wallet.status === "CONNECTING"} onClick={() => void wallet.connect()} type="button">
+        {walletError && <div className="form-alert gate-alert" role="alert">{walletError}</div>}
+        <button className="primary-button" disabled={wallet.status === "CONNECTING"} onClick={() => void runWalletRecovery(wallet.connect)} type="button">
           {wallet.status === "CONNECTING" ? "Connecting…" : "Connect wallet"}
         </button>
       </section>
@@ -90,7 +101,8 @@ export function CreateProject({ contract: contractOverride }: CreateProjectProps
         <p className="eyebrow">Wrong network</p>
         <h1>Switch to GenLayer Studionet</h1>
         <p>Project creation is configured for Studionet and will not be submitted on another chain.</p>
-        <button className="primary-button" onClick={() => void wallet.switchToStudionet()} type="button">Switch network</button>
+        {walletError && <div className="form-alert gate-alert" role="alert">{walletError}</div>}
+        <button className="primary-button" onClick={() => void runWalletRecovery(wallet.switchToStudionet)} type="button">Switch network</button>
       </section>
     )
   }
