@@ -565,9 +565,9 @@ Commit: `feat: add evidence resolution and contract readback UI`
 - Consumes: frozen contract source, `genlayer-js`, environment-selected network and deployer.
 - Produces: guarded deploy command, immutable manifest, deployed-source/readback verifier, and live lifecycle evidence JSON.
 
-- [ ] **Step 1: Write failing deployment hygiene tests**
+- [ ] **Step 1: Write failing deployment behavior tests**
 
-Assert `.env.example` contains empty `DEPLOYER_PRIVATE_KEY`, `VERCEL_TOKEN`, `VITE_MILESTONEPROOF_ADDRESS`, and safe `VITE_GENLAYER_NETWORK=studionet`; runtime source contains no 64-hex private key or configured 40-hex contract address; manifest schema requires network, address, deployment transaction, deployer, source SHA-256, deployed-at timestamp, classification, and verification transaction/readback fields.
+Execute the deployment script in dry-run mode with sentinel credential values and assert its output and generated preview manifest omit those values while reporting only the derived deployer address. Parse `.env.example` through the same loader and assert empty `DEPLOYER_PRIVATE_KEY`, `VERCEL_TOKEN`, and `VITE_MILESTONEPROOF_ADDRESS` plus safe `VITE_GENLAYER_NETWORK=studionet`. Validate a representative manifest against the schema requiring network, address, deployment transaction, deployer, source SHA-256, deployed-at timestamp, classification, and verification transaction/readback fields.
 
 - [ ] **Step 2: Run deployment-file tests and confirm failure**
 
@@ -667,7 +667,7 @@ Expected: every command exits 0; only intended tracked changes remain.
 
 - [ ] **Step 4: Review repository hygiene and commit local completion**
 
-Inspect tracked, staged, and untracked files; scan for secret-shaped strings; confirm `node_modules`, `dist`, `.env`, `.vercel`, local evidence journals, research clone, and local instructions are ignored.
+Inspect tracked, staged, and untracked files; run a repository secret-pattern scan as a mandatory verification command; confirm `node_modules`, `dist`, `.env`, `.vercel`, local evidence journals, research clone, and local instructions are ignored. This scan is repository hygiene evidence, not a unit test.
 
 Commit: `docs: add MilestoneProof operations and evidence guide`
 
