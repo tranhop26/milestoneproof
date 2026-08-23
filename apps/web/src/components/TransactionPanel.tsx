@@ -1,0 +1,65 @@
+import { Check, Circle, ExternalLink } from "lucide-react"
+
+import type { TransactionPhase, TransactionState } from "../lib/transaction"
+import { StatusBadge } from "./StatusBadge"
+
+const HAPPY_PATH: TransactionPhase[] = [
+  "AWAITING_SIGNATURE",
+  "PENDING",
+  "FINALIZED",
+  "SUCCESS",
+  "READBACK",
+]
+
+export interface TransactionPanelProps {
+  state: TransactionState
+  explorerBaseUrl?: string
+}
+
+export function TransactionPanel({
+  state,
+  explorerBaseUrl = "https://explorer-studio.genlayer.com/transactions",
+}: TransactionPanelProps) {
+  const currentIndex = HAPPY_PATH.indexOf(state.phase)
+  return (
+    <section aria-labelledby="transaction-title" className="transaction-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">On-chain transaction</p>
+          <h2 id="transaction-title">Execution status</h2>
+        </div>
+        <StatusBadge status={state.phase} />
+      </div>
+
+      <div aria-atomic="true" aria-live="polite" className="transaction-message">
+        <strong>{state.phase === "ERROR" ? "Action needs attention" : "Current update"}</strong>
+        <span>{state.message}</span>
+      </div>
+
+      <ol aria-label="Transaction progress" className="transaction-steps">
+        {HAPPY_PATH.map((phase, index) => {
+          const complete = currentIndex >= index
+          const current = state.phase === phase
+          return (
+            <li className={complete ? "step-complete" : ""} key={phase}>
+              {complete ? <Check aria-hidden="true" size={14} /> : <Circle aria-hidden="true" size={14} />}
+              <span aria-current={current ? "step" : undefined}>{phase.replaceAll("_", " ")}</span>
+            </li>
+          )
+        })}
+      </ol>
+
+      {state.hash && (
+        <a
+          className="transaction-link"
+          href={`${explorerBaseUrl}/${state.hash}`}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <span>{state.hash.slice(0, 10)}…{state.hash.slice(-8)}</span>
+          <ExternalLink aria-hidden="true" size={14} />
+        </a>
+      )}
+    </section>
+  )
+}
