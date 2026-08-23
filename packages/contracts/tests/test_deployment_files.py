@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -375,6 +376,33 @@ def test_confirmed_deploy_waits_verifies_readback_and_writes_secret_free_manifes
     assert manifest["verification"]["sourceMatches"] is True
     assert manifest["explorerUrl"] == f"https://sdk-studionet-explorer.example/tx/{DEPLOY_TX}"
     jsonschema.validate(manifest, json.loads(SCHEMA.read_text(encoding="utf-8")))
+
+
+def test_root_deploy_wrapper_executes_the_contract_package_script(tmp_path):
+    fake = _fake_sdk(tmp_path)
+    manifest_path = tmp_path / "root-wrapper-manifest.json"
+    child_env = {
+        key: os.environ[key]
+        for key in ("PATH", "SystemRoot", "TEMP", "TMP", "APPDATA", "LOCALAPPDATA")
+        if key in os.environ
+    }
+    child_env.update(_fake_env(tmp_path, fake, manifest_path))
+    child_env["CONFIRM_DEPLOY"] = "YES"
+    pnpm = shutil.which("pnpm.cmd" if os.name == "nt" else "pnpm")
+    assert pnpm is not None
+
+    result = subprocess.run(
+        [pnpm, "run", "deploy:contract"],
+        cwd=ROOT,
+        env=child_env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert manifest_path.exists()
 
 
 def test_deploy_rejects_failed_execution_and_never_writes_manifest(tmp_path):

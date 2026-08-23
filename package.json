@@ -10,7 +10,7 @@
     "test": "pnpm -r --sequential test",
     "test:contract": "python -c \"import os, sys, pytest; os.environ['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'; args = sys.argv[1:] or ['packages/contracts/tests']; raise SystemExit(pytest.main(args))\"",
     "test:web": "pnpm --filter @milestoneproof/web test",
-    "deploy:contract": "pnpm --filter @milestoneproof/contracts deploy",
+    "deploy:contract": "pnpm --filter @milestoneproof/contracts run deploy",
     "deploy:contract:dry-run": "pnpm --filter @milestoneproof/contracts deploy:dry-run",
     "verify:contract": "pnpm --filter @milestoneproof/contracts verify",
     "e2e:contract:live": "pnpm --filter @milestoneproof/contracts e2e:live",
