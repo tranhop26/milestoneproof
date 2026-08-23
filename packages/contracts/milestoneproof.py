@@ -17,6 +17,7 @@ MAX_MILESTONES = 3
 MAX_SUBMISSION_ATTEMPTS = 3
 MAX_EVIDENCE_ITEMS = 4
 MAX_RESOLUTION_ATTEMPTS = 3
+RESOLUTION_RETRY_COOLDOWN_SECONDS = 60 * 60
 INFO_WINDOW_SECONDS = 72 * 60 * 60
 MAX_PAGE_SIZE = 50
 MAX_PROJECT_TITLE_LENGTH = 120
@@ -109,6 +110,36 @@ class Submission:
     provenance_ok: bool
     rationale: str
     resolved_at: u64
+    resolution_count: u8
+    next_retry_at: u64
+
+
+class ProjectCreated(gl.Event):
+    def __init__(self, project_id: u256, /, **data): ...
+
+
+class EvidenceSubmitted(gl.Event):
+    def __init__(self, submission_id: u256, /, **data): ...
+
+
+class SubmissionResolved(gl.Event):
+    def __init__(self, submission_id: u256, /, **data): ...
+
+
+class EvidenceSupplemented(gl.Event):
+    def __init__(self, submission_id: u256, /, **data): ...
+
+
+class MilestoneOpened(gl.Event):
+    def __init__(self, project_id: u256, /, **data): ...
+
+
+class MilestoneExpired(gl.Event):
+    def __init__(self, project_id: u256, /, **data): ...
+
+
+class ProjectCompleted(gl.Event):
+    def __init__(self, project_id: u256, /, **data): ...
 
 
 def _sanitize_untrusted(value: str) -> str:
@@ -463,6 +494,12 @@ class MilestoneProof(gl.Contract):
         self._append_project_id(self.builder_project_ids, builder, project_id)
         self.sponsor_nonces[nonce_key] = True
         self.project_count = project_id
+        ProjectCreated(
+            project_id,
+            sponsor=sponsor,
+            builder=builder,
+        ).emit()
+        MilestoneOpened(project_id, milestone_index=u8(0)).emit()
         return project_id
 
     @gl.public.view
@@ -474,7 +511,42 @@ class MilestoneProof(gl.Contract):
     def get_milestone(self, project_id: u256, index: u8) -> list:
         self._project_or_revert(project_id)
         milestone = self._milestone_or_revert(project_id, index)
-        return [SCHEMA_VERSION, project_id, index, milestone.title, list(milestone.criteria), list(milestone.allowed_sources), milestone.deadline, milestone.state, milestone.opened_at, milestone.submission_count, milestone.current_submission_id]
+        return [SCHEMA_VERSION, project_id, u8(int(index)), milestone.title, list(milestone.criteria), list(milestone.allowed_sources), milestone.deadline, milestone.state, milestone.opened_at, milestone.submission_count, milestone.current_submission_id]
+
+    @gl.public.view
+    def get_submission(self, submission_id: u256) -> list:
+        submission = self._submission_or_revert(submission_id)
+        evidence = []
+        for item in submission.evidence:
+            evidence.append([
+                item.source_kind,
+                item.url,
+                item.subject_ref,
+                item.version_ref,
+                item.observed_at,
+            ])
+        return [
+            SCHEMA_VERSION,
+            submission_id,
+            submission.project_id,
+            submission.milestone_index,
+            submission.revision,
+            submission.verdict,
+            submission.builder,
+            submission.submitted_at,
+            evidence,
+            submission.digest,
+            list(submission.criteria_met),
+            list(submission.missing_criteria),
+            submission.subject_match,
+            submission.version_match,
+            submission.fresh,
+            submission.provenance_ok,
+            submission.rationale,
+            submission.resolved_at,
+            submission.resolution_count,
+            submission.next_retry_at,
+        ]
 
     @gl.public.view
     def get_sponsor_project_count(self, sponsor: gl.Address) -> u256:
@@ -522,10 +594,99 @@ class MilestoneProof(gl.Contract):
 
     @gl.public.write
     def resubmit_evidence(self, project_id: u256, milestone_index: u8, evidence: list, client_nonce: str) -> u256:
-        raise gl.UserError("resubmission is not available")
+        project, milestone, submission = self._current_submission_context(
+            project_id, milestone_index
+        )
+        if gl.message.sender_address != project.builder:
+            raise gl.UserError("builder only")
+        if submission.verdict != REJECTED:
+            raise gl.UserError("current submission is not rejected")
+        return self._create_submission_revision(
+            project_id, milestone_index, evidence, client_nonce
+        )
+
+    @gl.public.write
+    def supplement_evidence(self, submission_id: u256, evidence: list, client_nonce: str) -> u256:
+        prior = self._submission_or_revert(submission_id)
+        project, milestone, current = self._current_submission_context(
+            prior.project_id, prior.milestone_index
+        )
+        if current.digest != submission_id:
+            raise gl.UserError("submission is not current")
+        if gl.message.sender_address != project.builder:
+            raise gl.UserError("builder only")
+        if current.verdict != REQUEST_MORE_INFO:
+            raise gl.UserError("current submission does not request more information")
+        if int(gl.message_raw.datetime) >= int(current.resolved_at) + INFO_WINDOW_SECONDS:
+            raise gl.UserError("information window has elapsed")
+        combined_evidence = []
+        for item in current.evidence:
+            combined_evidence.append([
+                item.source_kind,
+                item.url,
+                item.subject_ref,
+                item.version_ref,
+                int(item.observed_at),
+            ])
+        combined_evidence.extend(evidence)
+        revision_id = self._create_submission_revision(
+            prior.project_id,
+            prior.milestone_index,
+            combined_evidence,
+            client_nonce,
+            False,
+        )
+        EvidenceSupplemented(
+            revision_id,
+            project_id=prior.project_id,
+            milestone_index=prior.milestone_index,
+            prior_submission_id=submission_id,
+        ).emit()
+        return revision_id
 
     @gl.public.write
     def resolve_submission(self, submission_id: u256) -> None:
+        self._resolve_submission(submission_id, False)
+
+    @gl.public.write
+    def retry_resolution(self, submission_id: u256) -> None:
+        self._resolve_submission(submission_id, True)
+
+    @gl.public.write
+    def expire_milestone(self, project_id: u256, milestone_index: u8) -> None:
+        project = self._project_or_revert(project_id)
+        milestone = self._milestone_or_revert(project_id, milestone_index)
+        if project.status != ACTIVE:
+            raise gl.UserError("project is not active")
+        if project.current_milestone != milestone_index:
+            raise gl.UserError("milestone is not current")
+
+        now = int(gl.message_raw.datetime)
+        if milestone.state == OPEN:
+            if now < int(milestone.deadline):
+                raise gl.UserError("milestone deadline has not elapsed")
+        elif milestone.state == SUBMITTED:
+            submission = self._submission_or_revert(milestone.current_submission_id)
+            if submission.verdict == REQUEST_MORE_INFO:
+                if now < int(submission.resolved_at) + INFO_WINDOW_SECONDS:
+                    raise gl.UserError("information window has not elapsed")
+            elif submission.verdict == REJECTED:
+                if now < int(milestone.deadline):
+                    raise gl.UserError("milestone deadline has not elapsed")
+            else:
+                raise gl.UserError("milestone cannot be expired")
+        else:
+            raise gl.UserError("milestone cannot be expired")
+
+        self._transition_current_milestone(
+            project_id, milestone_index, FAILED_MILESTONE
+        )
+        MilestoneExpired(
+            project_id,
+            milestone_index=milestone_index,
+        ).emit()
+
+    def _resolve_submission(self, submission_id: u256, is_retry: bool) -> None:
         stored_submission = self._submission_or_revert(submission_id)
         submission = gl.storage.copy_to_memory(stored_submission)
         project = gl.storage.copy_to_memory(self._project_or_revert(submission.project_id))
@@ -538,10 +699,23 @@ class MilestoneProof(gl.Contract):
             raise gl.UserError("project party only")
         if project.status != ACTIVE:
             raise gl.UserError("project is not active")
-        if submission.verdict != NONE:
-            raise gl.UserError("submission is already resolved")
         if milestone.state != SUBMITTED or milestone.current_submission_id != submission_id:
             raise gl.UserError("submission is not current")
+        if is_retry:
+            if submission.verdict != UNRESOLVED:
+                raise gl.UserError("submission is not unresolved")
+            if int(submission.resolution_count) >= MAX_RESOLUTION_ATTEMPTS:
+                raise gl.UserError("resolution attempts exhausted")
+            if int(gl.message_raw.datetime) < int(submission.next_retry_at):
+                raise gl.UserError("resolution retry cooldown has not elapsed")
+        elif submission.verdict != NONE:
+            raise gl.UserError("submission is already resolved")
+        if int(submission.resolution_count) >= MAX_RESOLUTION_ATTEMPTS:
+            raise gl.UserError("resolution attempts exhausted")
+
+        stored_submission.resolution_count = u8(
+            int(stored_submission.resolution_count) + 1
+        )
 
         criteria = [str(criterion) for criterion in milestone.criteria]
         evidence = []
@@ -580,8 +754,34 @@ class MilestoneProof(gl.Contract):
 
         resolution = gl.vm.run_nondet_unsafe(evaluate_evidence, validate_evidence)
         self._record_resolution(stored_submission, resolution)
+        transition = ""
         if resolution["verdict"] == "APPROVED":
-            self._approve_milestone(submission.project_id, submission.milestone_index)
+            transition = self._transition_current_milestone(
+                submission.project_id,
+                submission.milestone_index,
+                APPROVED_MILESTONE,
+            )
+        elif (
+            resolution["verdict"] == "REJECTED"
+            and int(milestone.submission_count) >= MAX_SUBMISSION_ATTEMPTS
+        ):
+            transition = self._transition_current_milestone(
+                submission.project_id,
+                submission.milestone_index,
+                FAILED_MILESTONE,
+            )
+        SubmissionResolved(
+            submission_id,
+            verdict=stored_submission.verdict,
+            resolution_count=stored_submission.resolution_count,
+        ).emit()
+        if transition == "opened":
+            MilestoneOpened(
+                submission.project_id,
+                milestone_index=u8(int(submission.milestone_index) + 1),
+            ).emit()
+        elif transition == "completed":
+            ProjectCompleted(submission.project_id).emit()
 
     def _validate_project_input(self, sponsor: gl.Address, builder: gl.Address, title: str, description: str, milestones: list, client_nonce: str) -> None:
         if sponsor == ZERO_ADDRESS:
@@ -641,6 +841,24 @@ class MilestoneProof(gl.Contract):
             raise gl.UserError("milestone deadline has passed")
         if int(milestone.submission_count) >= MAX_SUBMISSION_ATTEMPTS:
             raise gl.UserError("submission attempts exhausted")
+        return self._create_submission_revision(
+            project_id, milestone_index, evidence, client_nonce
+        )
+
+    def _create_submission_revision(self, project_id: u256, milestone_index: u8, evidence: list, client_nonce: str, enforce_deadline: bool = True) -> u256:
+        milestone_index = u8(int(milestone_index))
+        builder = gl.message.sender_address
+        submitted_at = u64(gl.message_raw.datetime)
+        project = self._project_or_revert(project_id)
+        milestone = self._milestone_or_revert(project_id, milestone_index)
+        if project.status != ACTIVE:
+            raise gl.UserError("project is not active")
+        if builder != project.builder:
+            raise gl.UserError("builder only")
+        if enforce_deadline and submitted_at >= milestone.deadline:
+            raise gl.UserError("milestone deadline has passed")
+        if int(milestone.submission_count) >= MAX_SUBMISSION_ATTEMPTS:
+            raise gl.UserError("submission attempts exhausted")
         self._validate_required_text(client_nonce, MAX_CLIENT_NONCE_LENGTH, "client nonce")
         nonce_key = self._submission_nonce_key(builder, client_nonce)
         if self.submission_nonces.get(nonce_key, False):
@@ -673,12 +891,20 @@ class MilestoneProof(gl.Contract):
             False,
             "",
             u64(0),
+            u8(0),
+            u64(0),
         )
         self.submission_nonces[nonce_key] = True
         self.submission_action_keys[action_key] = True
         milestone.submission_count = revision
         milestone.current_submission_id = digest
         milestone.state = SUBMITTED
+        EvidenceSubmitted(
+            digest,
+            project_id=project_id,
+            milestone_index=milestone_index,
+            revision=revision,
+        ).emit()
         return digest
 
     def _freeze_evidence(self, evidence: list, milestone: Milestone, submitted_at: u64) -> DynArray[Evidence]:
@@ -735,19 +961,37 @@ class MilestoneProof(gl.Contract):
         submission.provenance_ok = integrity["provenance_ok"]
         submission.rationale = resolution["rationale"]
         submission.resolved_at = u64(gl.message_raw.datetime)
+        submission.next_retry_at = (
+            u64(int(gl.message_raw.datetime) + RESOLUTION_RETRY_COOLDOWN_SECONDS)
+            if resolution["verdict"] == "UNRESOLVED"
+            else u64(0)
+        )
 
-    def _approve_milestone(self, project_id: u256, milestone_index: u8) -> None:
+    def _transition_current_milestone(self, project_id: u256, milestone_index: u8, state: u8) -> str:
         project = self.projects[project_id]
         milestone = self.milestones[project_id][int(milestone_index)]
+        if project.status != ACTIVE:
+            raise gl.UserError("project is not active")
+        if project.current_milestone != milestone_index:
+            raise gl.UserError("milestone is not current")
+        if milestone.state not in (OPEN, SUBMITTED):
+            raise gl.UserError("milestone is terminal")
+        if state == FAILED_MILESTONE:
+            milestone.state = FAILED_MILESTONE
+            project.status = FAILED
+            return "failed"
+        if state != APPROVED_MILESTONE:
+            raise gl.UserError("invalid milestone transition")
         milestone.state = APPROVED_MILESTONE
         next_index = int(milestone_index) + 1
         if next_index >= int(project.milestone_count):
             project.status = COMPLETED
-            return
+            return "completed"
         next_milestone = self.milestones[project_id][next_index]
         next_milestone.state = OPEN
         next_milestone.opened_at = u64(gl.message_raw.datetime)
         project.current_milestone = u8(next_index)
+        return "opened"
 
     def _validate_url(self, url: str) -> None:
         _validate_public_evidence_url(url)
@@ -797,6 +1041,18 @@ class MilestoneProof(gl.Contract):
         if submission is None:
             raise gl.UserError("submission not found")
         return submission
+
+    def _current_submission_context(self, project_id: u256, milestone_index: u8):
+        project = self._project_or_revert(project_id)
+        milestone = self._milestone_or_revert(project_id, milestone_index)
+        if project.status != ACTIVE:
+            raise gl.UserError("project is not active")
+        if project.current_milestone != milestone_index:
+            raise gl.UserError("milestone is not current")
+        if milestone.state != SUBMITTED:
+            raise gl.UserError("milestone is not submitted")
+        submission = self._submission_or_revert(milestone.current_submission_id)
+        return project, milestone, submission
 
     def _milestone_or_revert(self, project_id: u256, index: u8) -> Milestone:
         project_milestones = self.milestones[project_id]

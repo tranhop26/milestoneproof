@@ -87,6 +87,30 @@ def event(cls: type[Any]) -> type[Any]:
     return dataclass(cls)
 
 
+class Event:
+    name = "Event"
+
+    def __init_subclass__(cls) -> None:
+        declared_init = cls.__dict__["__init__"]
+        positional_only_count = declared_init.__code__.co_posonlyargcount - 1
+        indexed_names = declared_init.__code__.co_varnames[
+            1 : positional_only_count + 1
+        ]
+        cls.name = cls.__name__
+
+        def initialize(self, *args, **kwargs):
+            if len(args) != len(indexed_names):
+                raise TypeError("indexed event fields mismatch")
+            self._blob = dict(kwargs)
+            for name, value in zip(indexed_names, args):
+                self._blob[name] = value
+
+        cls.__init__ = initialize
+
+    def emit(self) -> None:
+        _runtime().events.append((type(self).name, dict(self._blob)))
+
+
 class _PublicNamespace:
     def __call__(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         fn.__genlayer_public__ = True
@@ -220,10 +244,6 @@ def clear_runtime() -> None:
             events=[],
         )
     )
-
-
-def emit(name: str, **payload: Any) -> None:
-    _runtime().events.append((name, payload))
 
 
 class _StorageNamespace:
