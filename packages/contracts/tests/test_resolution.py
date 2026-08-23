@@ -1,6 +1,7 @@
 from copy import deepcopy
 import json
 
+import cloudpickle
 import pytest
 
 from conftest import (
@@ -164,22 +165,67 @@ def test_unavailable_web_render_becomes_unresolved(chain, submitted):
     assert chain.milestone(1, 0).state == SUBMITTED
 
 
-def test_contradictory_evidence_cannot_be_rewritten_as_approval(chain, submitted):
-    chain.set_verdict(
-        verdict="REJECTED",
-        criteria=[False, False],
-        missing=[],
-        integrity=[False, True, True, False],
-        rationale="The page identifies another repository.",
-    )
+def test_conflicting_sources_reach_both_nodes_and_cannot_approve(chain):
+    chain.set_now(1_800_000_000)
+    criteria = [
+        "The release is built from the submitted commit",
+        "The complete contract test suite passes",
+    ]
+    project_id = chain.create_project([{
+        "title": "Verify conflicting evidence",
+        "criteria": criteria,
+        "allowed_sources": ["REPOSITORY", "CI"],
+        "deadline": 1_900_000_000,
+    }])
+    commit = "0123456789abcdef0123456789abcdef01234567"
+    repository_url = f"https://github.com/acme/milestoneproof/commit/{commit}"
+    ci_url = "https://ci.example.org/acme/milestoneproof/runs/42"
+    subject = "github.com/acme/milestoneproof"
+    submission_id = chain.submit(project_id, [
+        ["REPOSITORY", repository_url, subject, commit, 1_800_000_000],
+        ["CI", ci_url, subject, commit, 1_800_000_000],
+    ], "conflicting-sources")
+    repository_content = "Release commit is complete and all tests passed."
+    ci_content = "Run 42 failed: semantic resolution tests did not pass."
+    GL.set_web_response(repository_url, repository_content)
+    GL.set_web_response(ci_url, ci_content)
+    prompts = []
+    leader = verdict_object("APPROVED", [True, True], [], [True, True, True, True])
+    validator = verdict_object("REJECTED", [True, False], [], [True, True, True, True])
 
-    chain.call("resolve_submission", submitted, sender=SPONSOR)
+    def conflicting_judgments(prompt):
+        prompts.append(prompt)
+        return json.dumps(leader if len(prompts) == 1 else validator)
 
-    resolution = chain.submission(submitted)
-    assert resolution.verdict == REJECTED
-    assert resolution.subject_match is False
-    assert resolution.provenance_ok is False
-    assert resolution.rationale == "The page identifies another repository."
+    GL.set_prompt_handler(conflicting_judgments)
+
+    with pytest.raises(GL.ProtocolError, match="semantic consensus was not reached"):
+        chain.call("resolve_submission", submission_id, sender=SPONSOR)
+
+    assert len(prompts) == 2
+    for prompt in prompts:
+        for criterion in criteria:
+            assert criterion in prompt
+        for expected in (
+            "BEGIN_UNTRUSTED_EVIDENCE_ITEM_0",
+            "BEGIN_UNTRUSTED_EVIDENCE_ITEM_1",
+            "source_kind: REPOSITORY",
+            "source_kind: CI",
+            repository_url,
+            ci_url,
+            repository_content,
+            ci_content,
+            f"subject_ref: {subject}",
+            f"version_ref: {commit}",
+            "observed_at: 1800000000",
+            "subject_match",
+            "version_match",
+            "opened_at <= observed_at <= submitted_at < milestone_deadline",
+            "provenance_ok",
+        ):
+            assert expected in prompt
+    assert chain.submission(submission_id).verdict == NONE
+    assert chain.milestone(project_id, 0).state == SUBMITTED
 
 
 @pytest.mark.parametrize(
@@ -244,6 +290,55 @@ def test_each_semantic_disagreement_is_a_protocol_failure_and_rolls_back(
 
     after = (chain.project(1), chain.milestone(1, 0), chain.submission(submitted))
     assert after == before
+    assert chain.submission(submitted).verdict == NONE
+
+
+def test_nondet_closures_serialize_without_capturing_contract_storage(chain, submitted):
+    chain.set_verdict(
+        verdict="REQUEST_MORE_INFO",
+        criteria=[False, False],
+        missing=[0, 1],
+        integrity=[True, True, True, True],
+    )
+    GL.require_nondet_serialization()
+
+    chain.call("resolve_submission", submitted, sender=SPONSOR)
+
+    serialized = GL.get_nondet_serializations()
+    assert len(serialized) == 2
+    assert all(isinstance(payload, bytes) and payload for payload in serialized)
+    pending = [cloudpickle.loads(payload) for payload in serialized]
+    captures = []
+    while pending:
+        function = pending.pop()
+        for cell in function.__closure__ or ():
+            captured = cell.cell_contents
+            captures.append(captured)
+            if callable(captured) and getattr(captured, "__closure__", None):
+                pending.append(captured)
+    assert not any(
+        isinstance(captured, (GL.Contract, GL.DynArray, GL.TreeMap))
+        for captured in captures
+    )
+
+
+@pytest.mark.parametrize("phase", ["leader", "validator", "consensus"])
+def test_protocol_exception_rolls_back_every_contract_map_and_counter(
+    chain, submitted, phase
+):
+    chain.set_verdict(
+        verdict="REQUEST_MORE_INFO",
+        criteria=[False, False],
+        missing=[0, 1],
+        integrity=[True, True, True, True],
+    )
+    before = deepcopy(chain.contract.__dict__)
+    GL.set_protocol_exception(phase)
+
+    with pytest.raises(GL.ProtocolError, match=f"{phase} protocol exception"):
+        chain.call("resolve_submission", submitted, sender=SPONSOR)
+
+    assert chain.contract.__dict__ == before
     assert chain.submission(submitted).verdict == NONE
 
 

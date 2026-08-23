@@ -5,6 +5,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Callable
 
+import cloudpickle
+
 
 class UserError(Exception):
     pass
@@ -120,6 +122,9 @@ class _Runtime:
     validator_prompt_result: Any
     prompt_handler: Callable[..., Any] | None
     nondet_phase: str
+    serialize_nondet_callables: bool
+    nondet_serializations: list[bytes]
+    protocol_exception_phase: str | None
     events: list[tuple[str, dict[str, Any]]]
 
 
@@ -133,6 +138,9 @@ _runtime_var: ContextVar[_Runtime] = ContextVar(
         validator_prompt_result=None,
         prompt_handler=None,
         nondet_phase="leader",
+        serialize_nondet_callables=False,
+        nondet_serializations=[],
+        protocol_exception_phase=None,
         events=[],
     ),
 )
@@ -180,6 +188,22 @@ def set_prompt_handler(handler: Callable[..., Any]) -> None:
     runtime.prompt_handler = handler
 
 
+def require_nondet_serialization(enabled: bool = True) -> None:
+    runtime = _runtime()
+    runtime.serialize_nondet_callables = enabled
+    runtime.nondet_serializations = []
+
+
+def get_nondet_serializations() -> list[bytes]:
+    return list(_runtime().nondet_serializations)
+
+
+def set_protocol_exception(phase: str | None) -> None:
+    if phase not in (None, "leader", "validator", "consensus"):
+        raise ValueError("invalid protocol exception phase")
+    _runtime().protocol_exception_phase = phase
+
+
 def clear_runtime() -> None:
     _runtime_var.set(
         _Runtime(
@@ -190,6 +214,9 @@ def clear_runtime() -> None:
             validator_prompt_result=None,
             prompt_handler=None,
             nondet_phase="leader",
+            serialize_nondet_callables=False,
+            nondet_serializations=[],
+            protocol_exception_phase=None,
             events=[],
         )
     )
@@ -248,15 +275,31 @@ class _VmNamespace:
     ) -> Any:
         runtime = _runtime()
         try:
+            if runtime.serialize_nondet_callables:
+                try:
+                    runtime.nondet_serializations = [
+                        cloudpickle.dumps(leader_fn),
+                        cloudpickle.dumps(validator_fn),
+                    ]
+                except Exception as error:
+                    raise ProtocolError(
+                        "nondeterministic callable is not serializable"
+                    ) from error
             runtime.nondet_phase = "leader"
+            if runtime.protocol_exception_phase == "leader":
+                raise ProtocolError("leader protocol exception")
             leader_result = leader_fn()
             runtime.nondet_phase = "validator"
+            if runtime.protocol_exception_phase == "validator":
+                raise ProtocolError("validator protocol exception")
             try:
                 accepted = validator_fn(Return(deepcopy(leader_result)))
             except Exception as error:
                 raise ProtocolError("validator execution disagreed") from error
             if accepted is not True:
                 raise ProtocolError("semantic consensus was not reached")
+            if runtime.protocol_exception_phase == "consensus":
+                raise ProtocolError("consensus protocol exception")
             return leader_result
         finally:
             runtime.nondet_phase = "leader"
@@ -278,7 +321,8 @@ class _SemanticNamespace:
 
 
 class Contract:
-    pass
+    def __getstate__(self) -> Any:
+        raise TypeError("contract storage root cannot cross nondeterministic boundary")
 
 
 class _RuntimeAccessor:
