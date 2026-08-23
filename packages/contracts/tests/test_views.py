@@ -1,9 +1,52 @@
 import pytest
+import json
+import os
+from pathlib import Path
 
 from conftest import BUILDER, GL, Revert, SPONSOR, STRANGER
 
 
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
+CONTRACT_SHAPE_PATH = Path(__file__).resolve().parents[2] / "shared" / "contract-shape.json"
+
+
+def _json_fixture_value(value):
+    if isinstance(value, bool) or value is None or isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return {key: _json_fixture_value(item) for key, item in value.items()}
+    if isinstance(value, (int, GL.u8, GL.u64, GL.u256)):
+        return str(int(value))
+    if isinstance(value, (list, tuple)):
+        return [_json_fixture_value(item) for item in value]
+    return str(value)
+
+
+def _deterministic_contract_shape(chain, valid_milestones):
+    project_id = chain.create_project(valid_milestones, nonce="contract-shape-project")
+    submission_id = chain.submit(project_id, [[
+        "REPOSITORY",
+        f"https://github.com/acme/milestoneproof/commit/{COMMIT}",
+        "github.com/acme/milestoneproof",
+        COMMIT,
+        0,
+    ]], "contract-shape-submission")
+    return _json_fixture_value({
+        "config": chain.call("get_config"),
+        "project": chain.call("get_project", project_id),
+        "milestone": chain.call("get_milestone", project_id, 0),
+        "submission": chain.call("get_submission", submission_id),
+    })
+
+
+def test_contract_shape_fixture_matches_versioned_contract_views(chain, valid_milestones):
+    shape = _deterministic_contract_shape(chain, valid_milestones)
+    rendered = json.dumps(shape, indent=2, sort_keys=True) + "\n"
+
+    if os.environ.get("UPDATE_CONTRACT_SHAPE") == "1":
+        CONTRACT_SHAPE_PATH.write_text(rendered, encoding="utf-8")
+    else:
+        assert CONTRACT_SHAPE_PATH.read_text(encoding="utf-8") == rendered
 
 
 def test_detail_views_reject_missing_ids(chain, valid_milestones):
