@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass
+import sys
 from typing import Any, Callable
 
 import cloudpickle
@@ -365,6 +366,7 @@ semantic = _SemanticNamespace()
 vm = _VmNamespace()
 message = _RuntimeAccessor("message")
 message_raw = _RuntimeAccessor("message_raw")
+gl = sys.modules[__name__]
 
 
 def __getattr__(name: str) -> Any:
