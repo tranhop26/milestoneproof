@@ -6,15 +6,18 @@ import {
   applyLocalEnv,
   assertAddress,
   assertHash,
+  assertManifestExplorer,
   assertSuccessfulFinalized,
   chainFor,
   deployedAddress,
   isMain,
+  loadDeploymentManifest,
   loadSdk,
   normalizeConfig,
   redactError,
   resolveNetwork,
   sha256,
+  transactionSender,
 } from "./lib.mjs"
 
 function option(argv, name) {
@@ -26,7 +29,7 @@ function option(argv, name) {
 export async function verify({ env = process.env, argv = process.argv.slice(2) } = {}) {
   await applyLocalEnv(env)
   const manifestFile = resolve(option(argv, "--manifest"))
-  const manifest = JSON.parse(await readFile(manifestFile, "utf8"))
+  const manifest = await loadDeploymentManifest(manifestFile)
   const network = resolveNetwork({ ...env, GENLAYER_NETWORK: manifest.network })
   const contractAddress = assertAddress(manifest.contractAddress, "manifest contract address")
   const transactionHash = assertHash(manifest.deploymentTransactionHash, "manifest deployment transaction hash")
@@ -38,7 +41,9 @@ export async function verify({ env = process.env, argv = process.argv.slice(2) }
   if (manifest.sourceSha256 !== localHash) throw new Error("Local source hash does not match the manifest")
 
   const sdk = await loadSdk(env)
-  const client = sdk.createClient({ chain: chainFor(sdk, network) })
+  const chain = chainFor(sdk, network)
+  assertManifestExplorer(manifest, chain)
+  const client = sdk.createClient({ chain })
   const receipt = await client.waitForTransactionReceipt({
     hash: transactionHash,
     status: sdk.TransactionStatus.FINALIZED,
@@ -46,6 +51,9 @@ export async function verify({ env = process.env, argv = process.argv.slice(2) }
   assertSuccessfulFinalized(receipt, sdk.ExecutionResult.FINISHED_WITH_RETURN)
   if (deployedAddress(receipt).toLowerCase() !== contractAddress.toLowerCase()) {
     throw new Error("Deployment transaction produced a different contract address")
+  }
+  if (transactionSender(receipt).toLowerCase() !== manifest.deployerAddress.toLowerCase()) {
+    throw new Error("Deployment transaction sender does not match the manifest deployer")
   }
   const configReadback = normalizeConfig(await client.readContract({
     address: contractAddress,

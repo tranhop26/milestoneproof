@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto"
-import { readFile } from "node:fs/promises"
 import { resolve } from "node:path"
 
 import {
@@ -7,10 +6,13 @@ import {
   applyLocalEnv,
   assertAddress,
   assertHash,
+  assertManifestExplorer,
   assertSuccessfulFinalized,
   chainFor,
   isMain,
+  loadDeploymentManifest,
   loadSdk,
+  pathExists,
   redactError,
   resolveNetwork,
   writeJsonAtomically,
@@ -23,6 +25,13 @@ const FIXTURE = {
   versionRef: "573e6bbc9c3aa7d3e40c37505d0a83a1ab1182c1",
   criterion: "The public genlayerlabs/genlayer-js repository contains commit 573e6bbc9c3aa7d3e40c37505d0a83a1ab1182c1 for release v1.1.8.",
 }
+
+const PROJECT_TITLE = "SDK release proof"
+const PROJECT_DESCRIPTION = "Verify a public GenLayer SDK release commit through semantic consensus."
+// GenLayer Studio implements this hosted-development faucet as
+// sim_fundAccount(address, amountWei) and returns its generated transaction hash.
+const STUDIONET_FUNDING_METHOD = "sim_fundAccount"
+const STUDIONET_FUNDING_WEI = 100_000_000_000_000_000_000
 
 function option(argv, name) {
   const index = argv.indexOf(name)
@@ -88,16 +97,18 @@ export async function runLiveE2e({ env = process.env, argv = process.argv.slice(
     throw new Error("Live E2E refused: set CONFIRM_LIVE_E2E=YES only after action-time confirmation")
   }
 
-  const manifestFile = resolve(option(argv, "--manifest"))
-  const manifest = JSON.parse(await readFile(manifestFile, "utf8"))
-  if (manifest.network !== "studionet") throw new Error("Live E2E supports Studionet only")
-  if (manifest.classification !== "INTENTIONALLY_FROZEN" || manifest.verification?.sourceMatches !== true) {
-    throw new Error("Manifest must describe a source-verified INTENTIONALLY_FROZEN deployment")
+  const evidencePath = resolve(env.LIVE_EVIDENCE_PATH || resolve(ROOT, "work/evidence/live-contract.json"))
+  if (await pathExists(evidencePath)) {
+    throw new Error(`Live evidence already exists: ${evidencePath}`)
   }
+  const manifestFile = resolve(option(argv, "--manifest"))
+  const manifest = await loadDeploymentManifest(manifestFile)
+  if (manifest.network !== "studionet") throw new Error("Live E2E supports Studionet only")
   const contractAddress = assertAddress(manifest.contractAddress, "manifest contract address")
   const network = resolveNetwork({ ...env, GENLAYER_NETWORK: manifest.network })
   const sdk = await loadSdk(env)
   const chain = chainFor(sdk, network)
+  assertManifestExplorer(manifest, chain)
 
   const sponsor = sdk.createAccount()
   const builder = sdk.createAccount()
@@ -108,8 +119,12 @@ export async function runLiveE2e({ env = process.env, argv = process.argv.slice(
   }
 
   const readClient = sdk.createClient({ chain })
+  const fundingTransactions = []
   for (const actorAddress of addresses) {
-    await readClient.request({ method: "sim_fundAccount", params: [actorAddress, 100] })
+    fundingTransactions.push(assertHash(await readClient.request({
+      method: STUDIONET_FUNDING_METHOD,
+      params: [actorAddress, STUDIONET_FUNDING_WEI],
+    }), "Studionet funding transaction hash"))
   }
   const sponsorClient = sdk.createClient({ chain, account: sponsor })
   const builderClient = sdk.createClient({ chain, account: builder })
@@ -122,8 +137,8 @@ export async function runLiveE2e({ env = process.env, argv = process.argv.slice(
     functionName: "create_project",
     args: [
       builder.address,
-      "SDK release proof",
-      "Verify a public GenLayer SDK release commit through semantic consensus.",
+      PROJECT_TITLE,
+      PROJECT_DESCRIPTION,
       [{
         title: "Verify v1.1.8",
         criteria: [FIXTURE.criterion],
@@ -135,19 +150,50 @@ export async function runLiveE2e({ env = process.env, argv = process.argv.slice(
     value: 0n,
   })
 
-  const projectId = integer(await readClient.readContract({
+  const sponsorProjectCount = integer(await readClient.readContract({
     address: contractAddress,
-    functionName: "get_project_count",
-    args: [],
-  }), "project id")
+    functionName: "get_sponsor_project_count",
+    args: [sponsor.address],
+  }), "sponsor project count")
+  if (sponsorProjectCount !== 1n) throw new Error("Fresh sponsor project index is not unique")
+  const sponsorProjectIds = await readClient.readContract({
+    address: contractAddress,
+    functionName: "get_sponsor_project_ids",
+    args: [sponsor.address, 0n, 1],
+  })
+  if (!Array.isArray(sponsorProjectIds) || sponsorProjectIds.length !== 1) {
+    throw new Error("Fresh sponsor project index did not return one newest project")
+  }
+  const projectId = integer(sponsorProjectIds[0], "project id")
   if (projectId === 0n) throw new Error("create_project did not produce a project")
+  const createdProject = await readClient.readContract({
+    address: contractAddress,
+    functionName: "get_project",
+    args: [projectId],
+  })
   const openMilestone = await readClient.readContract({
     address: contractAddress,
     functionName: "get_milestone",
     args: [projectId, 0],
   })
+  if (!Array.isArray(createdProject)
+    || integer(createdProject[1], "project id readback") !== projectId
+    || String(createdProject[2]).toLowerCase() !== sponsor.address.toLowerCase()
+    || String(createdProject[3]).toLowerCase() !== builder.address.toLowerCase()
+    || createdProject[4] !== PROJECT_TITLE
+    || createdProject[5] !== PROJECT_DESCRIPTION
+    || integer(createdProject[9], "project milestone count") !== 1n) {
+    throw new Error("Created project readback does not match the fresh sponsor action")
+  }
   if (!Array.isArray(openMilestone) || integer(openMilestone[7], "milestone state") !== 1n) {
     throw new Error("Created milestone is not OPEN")
+  }
+  if (integer(openMilestone[1], "milestone project id") !== projectId
+    || integer(openMilestone[2], "milestone index") !== 0n
+    || openMilestone[3] !== "Verify v1.1.8"
+    || JSON.stringify(openMilestone[4]) !== JSON.stringify([FIXTURE.criterion])
+    || JSON.stringify(openMilestone[5]) !== JSON.stringify([FIXTURE.sourceKind])) {
+    throw new Error("Created milestone readback does not match the frozen milestone")
   }
   const observedAt = integer(openMilestone[8], "milestone opened_at")
   const evidence = [[
@@ -199,7 +245,6 @@ export async function runLiveE2e({ env = process.env, argv = process.argv.slice(
   if (integer(milestone?.[7], "milestone state") !== 3n) throw new Error("Happy path did not approve the milestone")
   if (integer(submission?.[5], "submission verdict") !== 1n) throw new Error("Happy path verdict was not APPROVED")
 
-  const evidencePath = resolve(env.LIVE_EVIDENCE_PATH || resolve(ROOT, "work/evidence/live-contract.json"))
   const proof = {
     schemaVersion: 1,
     recordedAt: new Date().toISOString(),
@@ -212,6 +257,7 @@ export async function runLiveE2e({ env = process.env, argv = process.argv.slice(
     },
     fixture: FIXTURE,
     transactions: {
+      funding: fundingTransactions,
       createProject,
       unauthorizedSubmission,
       submitEvidence,

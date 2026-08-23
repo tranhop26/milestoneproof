@@ -20,6 +20,8 @@ import {
   requirePrivateKey,
   resolveNetwork,
   sha256,
+  transactionSender,
+  validateDeploymentManifest,
   writeJsonAtomically,
 } from "./lib.mjs"
 
@@ -71,6 +73,9 @@ export async function deploy({ env = process.env, argv = process.argv.slice(2) }
     status: sdk.TransactionStatus.FINALIZED,
   })
   assertSuccessfulFinalized(receipt, sdk.ExecutionResult.FINISHED_WITH_RETURN)
+  if (transactionSender(receipt).toLowerCase() !== deployerAddress.toLowerCase()) {
+    throw new Error("Deployment transaction sender does not match the selected deployer")
+  }
   const contractAddress = deployedAddress(receipt)
   const configReadback = normalizeConfig(await client.readContract({
     address: contractAddress,
@@ -90,7 +95,7 @@ export async function deploy({ env = process.env, argv = process.argv.slice(2) }
     sourceSha256,
     deployedAt: verifiedAt,
     classification: CLASSIFICATION,
-    explorerUrl: explorerTransactionUrl(network, transactionHash),
+    explorerUrl: explorerTransactionUrl(chain, transactionHash),
     verification: {
       transactionHash,
       transactionStatus: "FINALIZED",
@@ -100,17 +105,16 @@ export async function deploy({ env = process.env, argv = process.argv.slice(2) }
       configReadback,
     },
   }
+  await validateDeploymentManifest(manifest)
   await writeJsonAtomically(target, manifest, { immutable: true })
   console.log(`Deployment verified and manifest written: ${target}`)
 }
 
 if (isMain(import.meta.url)) {
-  let secret
   try {
-    secret = process.env.DEPLOYER_PRIVATE_KEY
     await deploy()
   } catch (error) {
-    console.error(redactError(error, [secret]))
+    console.error(redactError(error, [process.env.DEPLOYER_PRIVATE_KEY]))
     process.exitCode = 1
   }
 }

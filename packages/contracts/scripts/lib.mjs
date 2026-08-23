@@ -4,23 +4,24 @@ import { access, link, mkdir, readFile, rename, unlink, writeFile } from "node:f
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
+import Ajv2020 from "ajv/dist/2020.js"
+import addFormats from "ajv-formats"
+
 export const ROOT = fileURLToPath(new URL("../../../", import.meta.url))
 export const CONTRACT_PATH = resolve(ROOT, "packages/contracts/milestoneproof.py")
+export const MANIFEST_SCHEMA_PATH = resolve(ROOT, "deployments/schema.json")
 export const EXPECTED_CONFIG = [0, 3, 3, 4, 3, 259200]
 export const CLASSIFICATION = "INTENTIONALLY_FROZEN"
 
 const NETWORKS = {
   studionet: {
     chainExport: "studionet",
-    explorer: "https://explorer-studio.genlayer.com/tx",
   },
   "testnet-asimov": {
     chainExport: "testnetAsimov",
-    explorer: "https://explorer-asimov.genlayer.com/tx",
   },
   "testnet-bradbury": {
     chainExport: "testnetBradbury",
-    explorer: "https://explorer-bradbury.genlayer.com/tx",
   },
 }
 
@@ -76,7 +77,7 @@ export async function loadEnvFile(path) {
 
 export async function applyLocalEnv(env = process.env) {
   try {
-    const values = await loadEnvFile(".env")
+    const values = await loadEnvFile(env.MILESTONEPROOF_ENV_FILE || ".env")
     for (const [key, value] of Object.entries(values)) {
       if (env[key] === undefined) env[key] = value
     }
@@ -124,17 +125,26 @@ export function normalizeConfig(value) {
 }
 
 export function assertSuccessfulFinalized(receipt, executionResult = "FINISHED_WITH_RETURN") {
-  if (receipt?.statusName !== "FINALIZED") {
-    throw new Error(`Transaction did not reach FINALIZED (received ${receipt?.statusName || "UNKNOWN"})`)
+  const status = receipt?.status_name ?? receipt?.statusName
+  const actualExecutionResult = receipt?.txExecutionResultName ?? receipt?.tx_execution_result_name
+  if (status !== "FINALIZED") {
+    throw new Error(`Transaction did not reach FINALIZED (received ${status || "UNKNOWN"})`)
   }
-  if (receipt?.txExecutionResultName !== executionResult) {
-    throw new Error(`Transaction must end as ${executionResult} (received ${receipt?.txExecutionResultName || "UNKNOWN"})`)
+  if (actualExecutionResult !== executionResult) {
+    throw new Error(`Transaction must end as ${executionResult} (received ${actualExecutionResult || "UNKNOWN"})`)
   }
 }
 
 export function deployedAddress(receipt) {
-  const value = receipt?.txDataDecoded?.contractAddress || receipt?.recipient || receipt?.to_address
+  const value = receipt?.txDataDecoded?.contractAddress
+    || receipt?.tx_data_decoded?.contract_address
+    || receipt?.recipient
+    || receipt?.to_address
   return assertAddress(value, "deployed contract address")
+}
+
+export function transactionSender(receipt) {
+  return assertAddress(receipt?.from_address || receipt?.sender, "deployment transaction sender")
 }
 
 export async function pathExists(path) {
@@ -174,8 +184,48 @@ export function manifestPath(network, env = process.env) {
   return resolve(env.DEPLOYMENT_MANIFEST_PATH || resolve(ROOT, `deployments/${network.name}.json`))
 }
 
-export function explorerTransactionUrl(network, transactionHash) {
-  return `${network.explorer}/${assertHash(transactionHash)}`
+export function explorerTransactionUrl(chain, transactionHash) {
+  const base = chain?.blockExplorers?.default?.url
+  if (typeof base !== "string" || !/^https:\/\/[^/]+/u.test(base)) {
+    throw new Error("SDK chain does not provide a secure default explorer URL")
+  }
+  return `${base.replace(/\/+$/u, "")}/tx/${assertHash(transactionHash)}`
+}
+
+let manifestValidator
+
+async function getManifestValidator() {
+  if (!manifestValidator) {
+    const schema = JSON.parse(await readFile(MANIFEST_SCHEMA_PATH, "utf8"))
+    const ajv = new Ajv2020({ allErrors: true, strict: true })
+    addFormats(ajv)
+    manifestValidator = ajv.compile(schema)
+  }
+  return manifestValidator
+}
+
+export async function validateDeploymentManifest(manifest) {
+  const validate = await getManifestValidator()
+  if (!validate(manifest)) {
+    const details = validate.errors
+      .map((error) => `${error.instancePath || "/"} ${error.message}`)
+      .join("; ")
+    throw new Error(`Deployment manifest schema validation failed: ${details}`)
+  }
+  return manifest
+}
+
+export async function loadDeploymentManifest(path) {
+  const manifest = JSON.parse(await readFile(resolve(path), "utf8"))
+  return validateDeploymentManifest(manifest)
+}
+
+export function assertManifestExplorer(manifest, chain) {
+  const expected = explorerTransactionUrl(chain, manifest.deploymentTransactionHash)
+  if (manifest.explorerUrl !== expected) {
+    throw new Error("Manifest explorer URL does not match the locked SDK chain")
+  }
+  return expected
 }
 
 export function redactError(error, secrets = []) {

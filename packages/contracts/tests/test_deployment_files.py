@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 import jsonschema
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -22,6 +23,8 @@ DEPLOYER_ADDRESS = "0x" + ("d" * 40)
 
 def _run(script: Path, *args: str, env: dict[str, str] | None = None):
     child_env = os.environ.copy()
+    child_env.pop("CONFIRM_DEPLOY", None)
+    child_env.pop("CONFIRM_LIVE_E2E", None)
     child_env.update(env or {})
     return subprocess.run(
         ["node", str(script), *args],
@@ -41,7 +44,11 @@ def _fake_sdk(tmp_path: Path) -> Path:
 import { appendFileSync, readFileSync } from "node:fs";
 
 const log = (name) => appendFileSync(process.env.FAKE_CALL_LOG, `${name}\\n`);
-export const studionet = { id: 61999, name: "GenLayer Studionet" };
+export const studionet = {
+  id: 61999,
+  name: "GenLayer Studionet",
+  blockExplorers: { default: { url: "https://sdk-studionet-explorer.example" } },
+};
 export const TransactionStatus = { FINALIZED: "FINALIZED" };
 export const ExecutionResult = {
   FINISHED_WITH_RETURN: "FINISHED_WITH_RETURN",
@@ -57,6 +64,7 @@ export const createClient = () => {
       return {
         statusName: "FINALIZED",
         txExecutionResultName: process.env.FAKE_EXECUTION_RESULT || "FINISHED_WITH_RETURN",
+        from_address: process.env.FAKE_RECEIPT_DEPLOYER_ADDRESS || process.env.FAKE_DEPLOYER_ADDRESS,
         txDataDecoded: { type: "deploy", contractAddress: process.env.FAKE_RECEIPT_CONTRACT_ADDRESS || process.env.FAKE_CONTRACT_ADDRESS },
       };
     },
@@ -104,7 +112,11 @@ const hashes = ["a", "b", "c", "d"].map((digit) => `0x${digit.repeat(64)}`);
 let actor = 0;
 let stage = 0;
 const log = (name) => appendFileSync(process.env.FAKE_CALL_LOG, `${name}\\n`);
-export const studionet = { id: 61999, name: "GenLayer Studionet" };
+export const studionet = {
+  id: 61999,
+  name: "GenLayer Studionet",
+  blockExplorers: { default: { url: "https://sdk-studionet-explorer.example" } },
+};
 export const TransactionStatus = { FINALIZED: "FINALIZED" };
 export const ExecutionResult = {
   FINISHED_WITH_RETURN: "FINISHED_WITH_RETURN",
@@ -117,7 +129,12 @@ export const createAccount = () => {
 export const createClient = ({ account } = {}) => {
   log(`createClient:${account?.address || "read"}`);
   return {
-    request: async ({ method, params }) => { log(`${method}:${params[0]}`); return true; },
+    request: async ({ method, params }) => {
+      log(`${method}:${params[0]}`);
+      if (method !== "sim_fundAccount") throw new Error("unexpected request");
+      if (process.env.FAKE_FUNDING_FAILURE === "YES") throw new Error("faucet unavailable");
+      return `0x${"f".repeat(64)}`;
+    },
     writeContract: async ({ functionName }) => {
       log(`write:${account.address}:${functionName}`);
       if (functionName === "create_project") { stage = 1; return hashes[0]; }
@@ -136,9 +153,11 @@ export const createClient = ({ account } = {}) => {
     },
     readContract: async ({ functionName }) => {
       log(`read:${functionName}:${stage}`);
-      if (functionName === "get_project_count") return 7n;
-      if (functionName === "get_project") return [1n, 7n, addresses[0], addresses[1], "SDK release proof", "Public release evidence", stage === 3 ? 1n : 0n, 0n, 1800000000n, 1n];
-      if (functionName === "get_milestone") return [1n, 7n, 0n, "Verify v1.1.8", ["The public commit exists"], ["REPOSITORY"], 1900000000n, stage === 3 ? 3n : (stage === 2 ? 2n : 1n), 1800000000n, stage >= 2 ? 1n : 0n, stage >= 2 ? 9n : 0n];
+      if (functionName === "get_project_count") return 999n;
+      if (functionName === "get_sponsor_project_count") return 1n;
+      if (functionName === "get_sponsor_project_ids") return [7n];
+      if (functionName === "get_project") return [1n, 7n, addresses[0], process.env.FAKE_PROJECT_BUILDER || addresses[1], process.env.FAKE_PROJECT_TITLE || "SDK release proof", "Verify a public GenLayer SDK release commit through semantic consensus.", stage === 3 ? 1n : 0n, 0n, 1800000000n, 1n];
+      if (functionName === "get_milestone") return [1n, 7n, 0n, process.env.FAKE_MILESTONE_TITLE || "Verify v1.1.8", ["The public genlayerlabs/genlayer-js repository contains commit 573e6bbc9c3aa7d3e40c37505d0a83a1ab1182c1 for release v1.1.8."], ["REPOSITORY"], 1900000000n, stage === 3 ? 3n : (stage === 2 ? 2n : 1n), 1800000000n, stage >= 2 ? 1n : 0n, stage >= 2 ? 9n : 0n];
       if (functionName === "get_submission") return [2n, 9n, 7n, 0n, 1n, stage === 3 ? 1n : 0n, addresses[1], 1800000010n, [], 9n, [true], [], true, true, true, true, "Approved", 1800000020n, 1n, 0n, 1900000000n];
       throw new Error("unexpected read");
     },
@@ -149,6 +168,28 @@ export const createClient = ({ account } = {}) => {
         encoding="utf-8",
     )
     return fake
+
+
+def _manifest_data() -> dict:
+    return {
+        "schemaVersion": 1,
+        "network": "studionet",
+        "contractAddress": CONTRACT_ADDRESS,
+        "deploymentTransactionHash": DEPLOY_TX,
+        "deployerAddress": DEPLOYER_ADDRESS,
+        "sourceSha256": "a" * 64,
+        "deployedAt": "2026-08-23T00:00:00.000Z",
+        "classification": "INTENTIONALLY_FROZEN",
+        "explorerUrl": f"https://sdk-studionet-explorer.example/tx/{DEPLOY_TX}",
+        "verification": {
+            "transactionHash": DEPLOY_TX,
+            "transactionStatus": "FINALIZED",
+            "executionResult": "FINISHED_WITH_RETURN",
+            "verifiedAt": "2026-08-23T00:00:00.000Z",
+            "sourceMatches": True,
+            "configReadback": [0, 3, 3, 4, 3, 259200],
+        },
+    }
 
 
 def test_env_example_is_safe_when_parsed_by_deployment_loader():
@@ -176,6 +217,49 @@ process.stdout.write(JSON.stringify(values));
     }
 
 
+def test_receipt_guard_accepts_real_sdk_118_simplified_status_shape():
+    expression = """
+import { simplifyTransactionReceipt } from 'genlayer-js';
+import { assertSuccessfulFinalized } from './scripts/lib.mjs';
+const receipt = simplifyTransactionReceipt({
+  statusName: 'FINALIZED',
+  txExecutionResultName: 'FINISHED_WITH_RETURN',
+});
+if (receipt.status_name !== 'FINALIZED') throw new Error('SDK characterization failed');
+assertSuccessfulFinalized(receipt, 'FINISHED_WITH_RETURN');
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", expression],
+        cwd=ROOT / "packages" / "contracts",
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_explorer_link_uses_locked_real_sdk_118_studionet_authority():
+    expression = f"""
+import {{ studionet }} from 'genlayer-js/chains';
+import {{ explorerTransactionUrl }} from './scripts/lib.mjs';
+const actual = explorerTransactionUrl(studionet, '{DEPLOY_TX}');
+const expected = 'https://genlayer-explorer.vercel.app/tx/{DEPLOY_TX}';
+if (actual !== expected) throw new Error(`expected ${{expected}}, received ${{actual}}`);
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", expression],
+        cwd=ROOT / "packages" / "contracts",
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_dry_run_reports_derived_identity_without_network_or_secret(tmp_path):
     preview = tmp_path / "preview.json"
     result = _run(
@@ -200,6 +284,35 @@ def test_dry_run_reports_derived_identity_without_network_or_secret(tmp_path):
     assert preview_data["deployerAddress"].startswith("0x")
     assert preview_data["classification"] == "INTENTIONALLY_FROZEN"
     assert "privateKey" not in preview_text
+
+
+def test_main_redacts_private_key_loaded_from_env_file(tmp_path):
+    env_file = tmp_path / ".env"
+    missing_sdk = tmp_path / f"missing-{SENTINEL_KEY}.mjs"
+    env_file.write_text("\n".join([
+        f"DEPLOYER_PRIVATE_KEY={SENTINEL_KEY}",
+        "NODE_ENV=test",
+        f"MILESTONEPROOF_SDK_MODULE={missing_sdk.as_uri()}",
+        "GENLAYER_NETWORK=studionet",
+    ]) + "\n", encoding="utf-8")
+    child_env = os.environ.copy()
+    child_env.pop("DEPLOYER_PRIVATE_KEY", None)
+    child_env.pop("MILESTONEPROOF_SDK_MODULE", None)
+    child_env["MILESTONEPROOF_ENV_FILE"] = str(env_file)
+
+    result = subprocess.run(
+        ["node", str(DEPLOY), "--dry-run"],
+        cwd=ROOT,
+        env=child_env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert SENTINEL_KEY not in result.stdout + result.stderr
+    assert "[REDACTED]" in result.stderr
 
 
 def test_deploy_refuses_without_action_time_confirmation_before_network_use(tmp_path):
@@ -241,6 +354,7 @@ def test_confirmed_deploy_waits_verifies_readback_and_writes_secret_free_manifes
     assert manifest["verification"]["executionResult"] == "FINISHED_WITH_RETURN"
     assert manifest["verification"]["configReadback"] == [0, 3, 3, 4, 3, 259200]
     assert manifest["verification"]["sourceMatches"] is True
+    assert manifest["explorerUrl"] == f"https://sdk-studionet-explorer.example/tx/{DEPLOY_TX}"
     jsonschema.validate(manifest, json.loads(SCHEMA.read_text(encoding="utf-8")))
 
 
@@ -322,6 +436,21 @@ def test_verify_binds_manifest_address_to_deployment_transaction(tmp_path):
     assert "deployment transaction produced a different contract address" in verified.stderr.lower()
 
 
+def test_verify_binds_manifest_deployer_to_transaction_sender(tmp_path):
+    fake = _fake_sdk(tmp_path)
+    manifest_path = tmp_path / "manifest.json"
+    env = _fake_env(tmp_path, fake, manifest_path)
+    env["CONFIRM_DEPLOY"] = "YES"
+    deployed = _run(DEPLOY, env=env)
+    assert deployed.returncode == 0, deployed.stderr
+    env["FAKE_RECEIPT_DEPLOYER_ADDRESS"] = "0x" + ("e" * 40)
+
+    verified = _run(VERIFY, "--manifest", str(manifest_path), env=env)
+
+    assert verified.returncode != 0
+    assert "deployer" in verified.stderr.lower()
+
+
 def test_verify_rejects_internally_inconsistent_transaction_evidence(tmp_path):
     fake = _fake_sdk(tmp_path)
     manifest_path = tmp_path / "manifest.json"
@@ -338,6 +467,57 @@ def test_verify_rejects_internally_inconsistent_transaction_evidence(tmp_path):
 
     assert verified.returncode != 0
     assert "verification transaction does not match" in verified.stderr.lower()
+    assert not (tmp_path / "calls.log").exists()
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("classification",), "UPGRADABLE"),
+        (("deployerAddress",), "not-an-address"),
+        (("explorerUrl",), "http://unsafe.example/tx"),
+        (("verification", "transactionStatus"), "PENDING"),
+        (("verification", "sourceMatches"), False),
+    ],
+)
+def test_verify_rejects_schema_invalid_manifest_before_network(tmp_path, path, value):
+    fake = _fake_sdk(tmp_path)
+    manifest_path = tmp_path / "manifest.json"
+    env = _fake_env(tmp_path, fake, manifest_path)
+    env["CONFIRM_DEPLOY"] = "YES"
+    deployed = _run(DEPLOY, env=env)
+    assert deployed.returncode == 0, deployed.stderr
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    target = manifest
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (tmp_path / "calls.log").unlink()
+
+    verified = _run(VERIFY, "--manifest", str(manifest_path), env=env)
+
+    assert verified.returncode != 0
+    assert "schema" in verified.stderr.lower()
+    assert not (tmp_path / "calls.log").exists()
+
+
+def test_verify_rejects_explorer_not_bound_to_sdk_chain_before_network(tmp_path):
+    fake = _fake_sdk(tmp_path)
+    manifest_path = tmp_path / "manifest.json"
+    env = _fake_env(tmp_path, fake, manifest_path)
+    env["CONFIRM_DEPLOY"] = "YES"
+    deployed = _run(DEPLOY, env=env)
+    assert deployed.returncode == 0, deployed.stderr
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["explorerUrl"] = f"https://wrong-explorer.example/tx/{DEPLOY_TX}"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (tmp_path / "calls.log").unlink()
+
+    verified = _run(VERIFY, "--manifest", str(manifest_path), env=env)
+
+    assert verified.returncode != 0
+    assert "locked sdk chain" in verified.stderr.lower()
     assert not (tmp_path / "calls.log").exists()
 
 
@@ -364,16 +544,49 @@ def test_live_e2e_refuses_before_creating_accounts_or_network_clients(tmp_path):
     assert not evidence_path.exists()
 
 
+def test_live_e2e_refuses_existing_evidence_before_loading_sdk_or_funding(tmp_path):
+    evidence_path = tmp_path / "live-contract.json"
+    evidence_path.write_text('{"existing":true}\n', encoding="utf-8")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text("{}\n", encoding="utf-8")
+    result = _run(E2E, "--manifest", str(manifest_path), env={
+        "CONFIRM_LIVE_E2E": "YES",
+        "MILESTONEPROOF_SDK_MODULE": (tmp_path / "missing-sdk.mjs").as_uri(),
+        "FAKE_CALL_LOG": str(tmp_path / "calls.log"),
+        "LIVE_EVIDENCE_PATH": str(evidence_path),
+        "NODE_ENV": "test",
+    })
+
+    assert result.returncode != 0
+    assert "already exists" in result.stderr.lower()
+    assert not (tmp_path / "calls.log").exists()
+
+
+def test_live_e2e_rejects_invalid_manifest_before_loading_sdk_or_funding(tmp_path):
+    evidence_path = tmp_path / "live-contract.json"
+    manifest_path = tmp_path / "manifest.json"
+    manifest = _manifest_data()
+    manifest["classification"] = "UPGRADABLE"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    result = _run(E2E, "--manifest", str(manifest_path), env={
+        "CONFIRM_LIVE_E2E": "YES",
+        "MILESTONEPROOF_SDK_MODULE": (tmp_path / "missing-sdk.mjs").as_uri(),
+        "FAKE_CALL_LOG": str(tmp_path / "calls.log"),
+        "LIVE_EVIDENCE_PATH": str(evidence_path),
+        "NODE_ENV": "test",
+    })
+
+    assert result.returncode != 0
+    assert "schema" in result.stderr.lower()
+    assert not (tmp_path / "calls.log").exists()
+    assert not evidence_path.exists()
+
+
 def test_live_e2e_generates_actors_proves_success_and_unauthorized_error(tmp_path):
     fake = _e2e_sdk(tmp_path)
     evidence_path = tmp_path / "live-contract.json"
     manifest_path = tmp_path / "manifest.json"
-    manifest_path.write_text(json.dumps({
-        "network": "studionet",
-        "contractAddress": CONTRACT_ADDRESS,
-        "classification": "INTENTIONALLY_FROZEN",
-        "verification": {"sourceMatches": True},
-    }), encoding="utf-8")
+    manifest_path.write_text(json.dumps(_manifest_data()), encoding="utf-8")
     result = _run(E2E, "--manifest", str(manifest_path), env={
         "NODE_ENV": "test",
         "MILESTONEPROOF_SDK_MODULE": fake.as_uri(),
@@ -400,3 +613,57 @@ def test_live_e2e_generates_actors_proves_success_and_unauthorized_error(tmp_pat
     calls = (tmp_path / "calls.log").read_text(encoding="utf-8")
     assert calls.count("createAccount") == 3
     assert calls.count("sim_fundAccount") == 3
+    assert "get_project_count" not in calls
+    assert "read:get_sponsor_project_count" in calls
+    assert "read:get_sponsor_project_ids" in calls
+
+
+@pytest.mark.parametrize(
+    ("env_name", "value", "message"),
+    [
+        ("FAKE_PROJECT_BUILDER", "0x" + ("4" * 40), "project readback"),
+        ("FAKE_PROJECT_TITLE", "Concurrent project", "project readback"),
+        ("FAKE_MILESTONE_TITLE", "Wrong milestone", "milestone readback"),
+    ],
+)
+def test_live_e2e_rejects_action_readback_mismatch_before_evidence_write(tmp_path, env_name, value, message):
+    fake = _e2e_sdk(tmp_path)
+    evidence_path = tmp_path / "live-contract.json"
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(_manifest_data()), encoding="utf-8")
+    result = _run(E2E, "--manifest", str(manifest_path), env={
+        "NODE_ENV": "test",
+        "MILESTONEPROOF_SDK_MODULE": fake.as_uri(),
+        "FAKE_CALL_LOG": str(tmp_path / "calls.log"),
+        "LIVE_EVIDENCE_PATH": str(evidence_path),
+        "CONFIRM_LIVE_E2E": "YES",
+        env_name: value,
+    })
+
+    assert result.returncode != 0
+    assert message in result.stderr.lower()
+    calls = (tmp_path / "calls.log").read_text(encoding="utf-8")
+    assert calls.count("write:") == 1
+    assert "submit_evidence" not in calls
+    assert not evidence_path.exists()
+
+
+def test_live_e2e_funding_failure_prevents_all_contract_writes(tmp_path):
+    fake = _e2e_sdk(tmp_path)
+    evidence_path = tmp_path / "live-contract.json"
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(_manifest_data()), encoding="utf-8")
+    result = _run(E2E, "--manifest", str(manifest_path), env={
+        "NODE_ENV": "test",
+        "MILESTONEPROOF_SDK_MODULE": fake.as_uri(),
+        "FAKE_CALL_LOG": str(tmp_path / "calls.log"),
+        "LIVE_EVIDENCE_PATH": str(evidence_path),
+        "CONFIRM_LIVE_E2E": "YES",
+        "FAKE_FUNDING_FAILURE": "YES",
+    })
+
+    assert result.returncode != 0
+    calls = (tmp_path / "calls.log").read_text(encoding="utf-8")
+    assert "sim_fundAccount" in calls
+    assert "write:" not in calls
+    assert not evidence_path.exists()
