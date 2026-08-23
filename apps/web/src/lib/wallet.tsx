@@ -1,3 +1,4 @@
+import { createAccount, createClient } from "genlayer-js"
 import {
   createContext,
   useCallback,
@@ -8,6 +9,7 @@ import {
   useState,
   type PropsWithChildren,
 } from "react"
+import { studionet } from "genlayer-js/chains"
 
 import {
   clearWriteClientCache,
@@ -38,7 +40,21 @@ const WalletContext = createContext<WalletContextValue | null>(null)
 declare global {
   interface Window {
     ethereum?: Eip1193Provider
+    __MILESTONEPROOF_E2E_PRIVATE_KEY__?: string
   }
+}
+
+const E2E_WALLET_EVENT = "milestoneproof:e2e-wallet"
+type DemoAccount = ReturnType<typeof createAccount>
+
+function consumeDemoAccount(): DemoAccount | null {
+  if (typeof window === "undefined" || import.meta.env.VITE_ENABLE_E2E_WALLET !== "true") {
+    return null
+  }
+  const privateKey = window.__MILESTONEPROOF_E2E_PRIVATE_KEY__
+  delete window.__MILESTONEPROOF_E2E_PRIVATE_KEY__
+  if (typeof privateKey !== "string" || !/^0x[0-9a-f]{64}$/i.test(privateKey)) return null
+  return createAccount(privateKey as `0x${string}`)
 }
 
 function normalizeChainId(chainId: unknown): string | null {
@@ -61,17 +77,35 @@ export interface WalletProviderProps extends PropsWithChildren {
 }
 
 export function WalletProvider({ children, provider: providerOverride }: WalletProviderProps) {
-  const provider = providerOverride === undefined
+  const baseProvider = providerOverride === undefined
     ? (typeof window === "undefined" ? null : window.ethereum ?? null)
     : providerOverride
+  const [demoAccount, setDemoAccount] = useState<DemoAccount | null>(null)
+  const provider = demoAccount ? null : baseProvider
   const [account, setAccount] = useState<`0x${string}` | null>(null)
   const [chainId, setChainId] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
   const connectionVersion = useRef(0)
 
+  useEffect(() => {
+    const selectDemoAccount = () => {
+      const nextAccount = consumeDemoAccount()
+      if (!nextAccount) return
+      connectionVersion.current += 1
+      setDemoAccount(nextAccount)
+      setAccount(nextAccount.address.toLowerCase() as `0x${string}`)
+      setChainId(STUDIONET_CHAIN_ID)
+      setConnecting(false)
+    }
+    selectDemoAccount()
+    window.addEventListener(E2E_WALLET_EVENT, selectDemoAccount)
+    return () => window.removeEventListener(E2E_WALLET_EVENT, selectDemoAccount)
+  }, [])
+
   const clearConnection = useCallback(() => {
     connectionVersion.current += 1
     if (provider) clearWriteClientCache(provider)
+    setDemoAccount(null)
     setAccount(null)
     setConnecting(false)
   }, [provider])
@@ -79,8 +113,13 @@ export function WalletProvider({ children, provider: providerOverride }: WalletP
   useEffect(() => {
     if (!provider) {
       connectionVersion.current += 1
-      setAccount(null)
-      setChainId(null)
+      if (demoAccount) {
+        setAccount(demoAccount.address.toLowerCase() as `0x${string}`)
+        setChainId(STUDIONET_CHAIN_ID)
+      } else {
+        setAccount(null)
+        setChainId(null)
+      }
       return
     }
 
@@ -125,9 +164,14 @@ export function WalletProvider({ children, provider: providerOverride }: WalletP
       provider.removeListener?.("chainChanged", handleChainChanged)
       provider.removeListener?.("disconnect", handleDisconnect)
     }
-  }, [clearConnection, provider])
+  }, [clearConnection, demoAccount, provider])
 
   const connect = useCallback(async () => {
+    if (demoAccount) {
+      setAccount(demoAccount.address.toLowerCase() as `0x${string}`)
+      setChainId(STUDIONET_CHAIN_ID)
+      return
+    }
     if (!provider) {
       throw new TransactionLifecycleError("WALLET_DISCONNECTED", "No injected wallet was found.")
     }
@@ -150,7 +194,7 @@ export function WalletProvider({ children, provider: providerOverride }: WalletP
     } finally {
       if (requestVersion === connectionVersion.current) setConnecting(false)
     }
-  }, [provider])
+  }, [demoAccount, provider])
 
   const disconnect = useCallback(() => {
     setChainId(null)
@@ -195,6 +239,12 @@ export function WalletProvider({ children, provider: providerOverride }: WalletP
   }, [account, provider])
 
   const getWriteClient = useCallback(async () => {
+    if (demoAccount) {
+      if (chainId !== STUDIONET_CHAIN_ID) {
+        throw new TransactionLifecycleError("WRONG_NETWORK", "Switch to GenLayer Studionet to continue.")
+      }
+      return createClient({ chain: studionet, account: demoAccount })
+    }
     if (!provider || !account) {
       throw new TransactionLifecycleError("WALLET_DISCONNECTED", "Connect a wallet to continue.")
     }
@@ -202,7 +252,7 @@ export function WalletProvider({ children, provider: providerOverride }: WalletP
       throw new TransactionLifecycleError("WRONG_NETWORK", "Switch to GenLayer Studionet to continue.")
     }
     return writeClient(provider, account)
-  }, [account, chainId, provider])
+  }, [account, chainId, demoAccount, provider])
 
   const status: WalletStatus = connecting
     ? "CONNECTING"

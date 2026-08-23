@@ -4,6 +4,7 @@ import {
   ContractInputError,
   createClientNonce,
   createMilestoneProofContract,
+  getConfiguredContractAddress,
   type ContractClient,
   type CreateProjectInput,
 } from "./contract"
@@ -284,5 +285,12 @@ describe("MilestoneProof contract adapter", () => {
     expect(first).toBe("project:11111111-1111-4111-8111-111111111111")
     expect(second).not.toBe(first)
     expect(first.length).toBeLessThanOrEqual(128)
+  })
+
+  it("uses the canonical VITE_MILESTONEPROOF_ADDRESS runtime key only", () => {
+    expect(getConfiguredContractAddress({ VITE_MILESTONEPROOF_ADDRESS: CONTRACT })).toBe(CONTRACT)
+    expect(() => getConfiguredContractAddress({
+      VITE_MILESTONEPROOF_CONTRACT_ADDRESS: CONTRACT,
+    })).toThrow("VITE_MILESTONEPROOF_ADDRESS is not configured")
   })
 })

@@ -92,6 +92,9 @@ function WorkspaceContent({ contract, project, now }: { contract: MilestoneProof
         {tab === "Submissions" && (submissions.length ? <div className="submission-index">{submissions.map((milestone) => <Link className="submission-row" key={milestone.currentSubmissionId} to={`/submissions/${milestone.currentSubmissionId}`}><span>Milestone {milestone.index + 1}</span><strong>Submission #{milestone.currentSubmissionId}</strong><StatusBadge status={milestone.status} /></Link>)}</div> : <div className="truthful-empty"><h2>No submissions yet</h2><p>The contract has not recorded a submission for this project.</p></div>)}
         {tab === "On-chain activity" && (actions.transactionState.phase === "DISCONNECTED" ? <div className="truthful-empty"><h2>No activity feed available</h2><p>No on-chain activity is available from contract reads yet.</p></div> : <TransactionPanel state={actions.transactionState} />)}
       </section>
+      {tab !== "On-chain activity" && (actions.isPending || actions.transactionState.phase !== "DISCONNECTED") && (
+        <TransactionPanel state={actions.transactionState} />
+      )}
     </div>
   )
 }

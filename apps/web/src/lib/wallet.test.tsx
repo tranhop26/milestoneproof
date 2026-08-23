@@ -1,6 +1,7 @@
-import { act, renderHook } from "@testing-library/react"
+import { createAccount, generatePrivateKey } from "genlayer-js"
+import { act, renderHook, waitFor } from "@testing-library/react"
 import type { PropsWithChildren } from "react"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   STUDIONET_CHAIN_ID,
@@ -45,6 +46,12 @@ class FakeProvider implements Eip1193Provider {
 }
 
 describe("WalletProvider", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    delete (window as Window & { __MILESTONEPROOF_E2E_PRIVATE_KEY__?: string })
+      .__MILESTONEPROOF_E2E_PRIVATE_KEY__
+  })
+
   it("exposes the disconnected state when no injected wallet exists", async () => {
     const wrapper = ({ children }: PropsWithChildren) => (
       <WalletProvider provider={null}>{children}</WalletProvider>
@@ -196,5 +203,50 @@ describe("WalletProvider", () => {
     await act(async () => { resolveConnect(["0x1111111111111111111111111111111111111111"]); await connection })
 
     expect(result.current.account).toBe("0x2222222222222222222222222222222222222222")
+  })
+
+  it("consumes a runtime-only demo key when the Playwright wallet gate is enabled", async () => {
+    const privateKey = generatePrivateKey()
+    const generated = createAccount(privateKey)
+    vi.stubEnv("VITE_ENABLE_E2E_WALLET", "true")
+    ;(window as Window & { __MILESTONEPROOF_E2E_PRIVATE_KEY__?: string })
+      .__MILESTONEPROOF_E2E_PRIVATE_KEY__ = privateKey
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <WalletProvider provider={null}>{children}</WalletProvider>
+    )
+
+    const { result } = renderHook(() => useWallet(), { wrapper })
+
+    await waitFor(() => expect(result.current).toMatchObject({
+      status: "CONNECTED",
+      account: generated.address.toLowerCase(),
+      chainId: STUDIONET_CHAIN_ID,
+    }))
+    expect((window as Window & { __MILESTONEPROOF_E2E_PRIVATE_KEY__?: string })
+      .__MILESTONEPROOF_E2E_PRIVATE_KEY__).toBeUndefined()
+  })
+
+  it("replaces the in-memory demo signer when Playwright selects another generated actor", async () => {
+    const sponsorKey = generatePrivateKey()
+    const builderKey = generatePrivateKey()
+    const builder = createAccount(builderKey)
+    vi.stubEnv("VITE_ENABLE_E2E_WALLET", "true")
+    ;(window as Window & { __MILESTONEPROOF_E2E_PRIVATE_KEY__?: string })
+      .__MILESTONEPROOF_E2E_PRIVATE_KEY__ = sponsorKey
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <WalletProvider provider={null}>{children}</WalletProvider>
+    )
+    const { result } = renderHook(() => useWallet(), { wrapper })
+    await waitFor(() => expect(result.current.status).toBe("CONNECTED"))
+
+    act(() => {
+      ;(window as Window & { __MILESTONEPROOF_E2E_PRIVATE_KEY__?: string })
+        .__MILESTONEPROOF_E2E_PRIVATE_KEY__ = builderKey
+      window.dispatchEvent(new Event("milestoneproof:e2e-wallet"))
+    })
+
+    await waitFor(() => expect(result.current.account).toBe(builder.address.toLowerCase()))
+    expect((window as Window & { __MILESTONEPROOF_E2E_PRIVATE_KEY__?: string })
+      .__MILESTONEPROOF_E2E_PRIVATE_KEY__).toBeUndefined()
   })
 })

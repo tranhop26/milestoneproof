@@ -37,7 +37,7 @@ describe("TransactionPanel", () => {
   it("links transaction hashes to the current Studionet explorer route", () => {
     render(<TransactionPanel state={{ phase: "PENDING", hash: TX_HASH, message: "Pending." }} />)
 
-    expect(screen.getByRole("link")).toHaveAttribute(
+    expect(screen.getByRole("link", { name: TX_HASH })).toHaveAttribute(
       "href",
       `https://explorer-studio.genlayer.com/tx/${TX_HASH}`,
     )
@@ -54,5 +54,12 @@ describe("TransactionPanel", () => {
 
     const progress = screen.getByRole("list", { name: "Transaction progress" })
     expect(within(progress).getByText(/readback/i).closest("li")).toHaveClass("step-complete")
+  })
+
+  it("exposes the current phase on the real transaction region for lifecycle observation", () => {
+    render(<TransactionPanel state={{ phase: "FINALIZED", hash: TX_HASH, message: "Finalized." }} />)
+
+    expect(screen.getByRole("region", { name: "Execution status" }))
+      .toHaveAttribute("data-transaction-phase", "FINALIZED")
   })
 })

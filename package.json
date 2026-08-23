@@ -13,6 +13,7 @@
     "deploy:contract": "pnpm --filter @milestoneproof/contracts deploy",
     "deploy:contract:dry-run": "pnpm --filter @milestoneproof/contracts deploy:dry-run",
     "verify:contract": "pnpm --filter @milestoneproof/contracts verify",
-    "e2e:live": "pnpm --filter @milestoneproof/contracts e2e:live"
+    "e2e:contract:live": "pnpm --filter @milestoneproof/contracts e2e:live",
+    "e2e:live": "pnpm --filter @milestoneproof/web e2e:live"
   }
 }

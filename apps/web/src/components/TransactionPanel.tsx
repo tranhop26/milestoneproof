@@ -24,7 +24,11 @@ export function TransactionPanel({
   const progressPhase = state.phase === "ERROR" ? state.progressPhase : state.phase
   const currentIndex = progressPhase ? HAPPY_PATH.indexOf(progressPhase) : -1
   return (
-    <section aria-labelledby="transaction-title" className="transaction-panel">
+    <section
+      aria-labelledby="transaction-title"
+      className="transaction-panel"
+      data-transaction-phase={state.phase}
+    >
       <div className="panel-heading">
         <div>
           <p className="eyebrow">On-chain transaction</p>
@@ -53,12 +57,13 @@ export function TransactionPanel({
 
       {state.hash && (
         <a
+          aria-label={state.hash}
           className="transaction-link"
           href={`${explorerBaseUrl}/${state.hash}`}
           rel="noreferrer"
           target="_blank"
         >
-          <span>{state.hash.slice(0, 10)}…{state.hash.slice(-8)}</span>
+          <span>{state.hash}</span>
           <ExternalLink aria-hidden="true" size={14} />
         </a>
       )}
