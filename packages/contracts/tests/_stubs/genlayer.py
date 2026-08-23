@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import sys
 from typing import Any, Callable
 
@@ -152,7 +153,7 @@ _runtime_var: ContextVar[_Runtime] = ContextVar(
     "genlayer_runtime",
     default=_Runtime(
         message=_Message(),
-        message_raw={"datetime": 0},
+        message_raw={"datetime": "1970-01-01T00:00:00Z"},
         web_responses={},
         prompt_result=None,
         validator_prompt_result=None,
@@ -177,7 +178,11 @@ def set_sender(sender: Address | str) -> None:
 
 def set_now(timestamp: int) -> None:
     runtime = _runtime()
-    runtime.message_raw["datetime"] = int(timestamp)
+    runtime.message_raw["datetime"] = (
+        datetime.fromtimestamp(int(timestamp), timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def set_chain_id(chain_id: int) -> None:
@@ -228,7 +233,7 @@ def clear_runtime() -> None:
     _runtime_var.set(
         _Runtime(
             message=_Message(),
-            message_raw={"datetime": 0},
+            message_raw={"datetime": "1970-01-01T00:00:00Z"},
             web_responses={},
             prompt_result=None,
             validator_prompt_result=None,
