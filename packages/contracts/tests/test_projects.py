@@ -45,15 +45,15 @@ def test_runtime_message_sender_accessor_tracks_writes(chain):
 
 
 def test_runtime_message_raw_datetime_accessor_tracks_writes(chain):
-    assert gl.message_raw.datetime == 0
+    assert gl.message_raw["datetime"] == 0
 
-    gl.message_raw.datetime = 1_900_000_123
+    gl.message_raw["datetime"] = 1_900_000_123
 
-    assert gl.message_raw.datetime == 1_900_000_123
+    assert gl.message_raw["datetime"] == 1_900_000_123
 
     gl.set_now(1_900_000_456)
 
-    assert gl.message_raw.datetime == 1_900_000_456
+    assert gl.message_raw["datetime"] == 1_900_000_456
 
 
 def test_sponsor_creates_frozen_three_milestone_project(chain, valid_milestones):

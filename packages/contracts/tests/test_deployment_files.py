@@ -260,6 +260,41 @@ assertSuccessfulFinalized(receipt, 'FINISHED_WITH_RETURN');
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+@pytest.mark.parametrize(
+    ("leader_execution", "leader_status", "expected"),
+    [
+        ("SUCCESS", "return", "FINISHED_WITH_RETURN"),
+        ("ERROR", "contract_error", "FINISHED_WITH_ERROR"),
+    ],
+)
+def test_receipt_guard_maps_studionet_consensus_execution_shape(
+    leader_execution, leader_status, expected
+):
+    expression = f"""
+import {{ assertSuccessfulFinalized }} from './scripts/lib.mjs';
+assertSuccessfulFinalized({{
+  statusName: 'FINALIZED',
+  result_name: 'MAJORITY_AGREE',
+  consensus_data: {{
+    leader_receipt: [
+      {{ mode: 'leader', execution_result: '{leader_execution}', result: {{ status: '{leader_status}' }} }},
+      {{ mode: 'validator', vote: 'idle', execution_result: 'ERROR', result: {{ status: 'contract_error' }} }},
+    ],
+  }},
+}}, '{expected}');
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", expression],
+        cwd=ROOT / "packages" / "contracts",
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_explorer_link_uses_locked_real_sdk_118_studionet_authority():
     expression = f"""
 import {{ studionet }} from 'genlayer-js/chains';

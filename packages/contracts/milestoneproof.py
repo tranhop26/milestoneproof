@@ -486,7 +486,7 @@ class MilestoneProof(gl.Contract):
         if self.sponsor_nonces.get(nonce_key, False):
             raise gl.vm.UserError("nonce already used")
 
-        now = u64(gl.message_raw.datetime)
+        now = u64(gl.message_raw["datetime"])
         frozen_milestones = gl.storage.inmem_allocate(DynArray[Milestone])
         for index, definition in enumerate(milestones):
             frozen_milestones.append(self._freeze_milestone(definition, index, now))
@@ -622,7 +622,7 @@ class MilestoneProof(gl.Contract):
             raise gl.vm.UserError("builder only")
         if current.verdict != REQUEST_MORE_INFO:
             raise gl.vm.UserError("current submission does not request more information")
-        if int(gl.message_raw.datetime) >= int(current.resolved_at) + INFO_WINDOW_SECONDS:
+        if int(gl.message_raw["datetime"]) >= int(current.resolved_at) + INFO_WINDOW_SECONDS:
             raise gl.vm.UserError("information window has elapsed")
         combined_evidence = []
         for item in current.evidence:
@@ -666,7 +666,7 @@ class MilestoneProof(gl.Contract):
         if project.current_milestone != milestone_index:
             raise gl.vm.UserError("milestone is not current")
 
-        now = int(gl.message_raw.datetime)
+        now = int(gl.message_raw["datetime"])
         if milestone.state == OPEN:
             if now < int(milestone.deadline):
                 raise gl.vm.UserError("milestone deadline has not elapsed")
@@ -711,7 +711,7 @@ class MilestoneProof(gl.Contract):
                 raise gl.vm.UserError("submission is not unresolved")
             if int(submission.resolution_count) >= MAX_RESOLUTION_ATTEMPTS:
                 raise gl.vm.UserError("resolution attempts exhausted")
-            if int(gl.message_raw.datetime) < int(submission.next_retry_at):
+            if int(gl.message_raw["datetime"]) < int(submission.next_retry_at):
                 raise gl.vm.UserError("resolution retry cooldown has not elapsed")
         elif submission.verdict != NONE:
             raise gl.vm.UserError("submission is already resolved")
@@ -748,7 +748,7 @@ class MilestoneProof(gl.Contract):
             "milestone_opened_at": int(milestone.opened_at),
             "milestone_deadline": int(milestone.deadline),
             "effective_freshness_deadline": int(submission.freshness_deadline),
-            "resolution_time": int(gl.message_raw.datetime),
+            "resolution_time": int(gl.message_raw["datetime"]),
         }
 
         def evaluate_evidence() -> dict:
@@ -831,12 +831,12 @@ class MilestoneProof(gl.Contract):
             if source not in ALLOWED_SOURCE_KINDS:
                 raise gl.vm.UserError("invalid allowed source")
         deadline = definition.get("deadline")
-        if not isinstance(deadline, int) or deadline <= gl.message_raw.datetime:
+        if not isinstance(deadline, int) or deadline <= gl.message_raw["datetime"]:
             raise gl.vm.UserError("deadline must be in the future")
 
     def _submit_evidence(self, project_id: u256, milestone_index: u8, evidence: list, client_nonce: str) -> u256:
         builder = gl.message.sender_address
-        submitted_at = u64(gl.message_raw.datetime)
+        submitted_at = u64(gl.message_raw["datetime"])
         project = self._project_or_revert(project_id)
         milestone = self._milestone_or_revert(project_id, milestone_index)
         if project.status != ACTIVE:
@@ -856,7 +856,7 @@ class MilestoneProof(gl.Contract):
     def _create_submission_revision(self, project_id: u256, milestone_index: u8, evidence: list, client_nonce: str, freshness_deadline: u64 | None = None) -> u256:
         milestone_index = u8(int(milestone_index))
         builder = gl.message.sender_address
-        submitted_at = u64(gl.message_raw.datetime)
+        submitted_at = u64(gl.message_raw["datetime"])
         project = self._project_or_revert(project_id)
         milestone = self._milestone_or_revert(project_id, milestone_index)
         effective_freshness_deadline = (
@@ -1003,9 +1003,9 @@ class MilestoneProof(gl.Contract):
         submission.fresh = integrity["fresh"]
         submission.provenance_ok = integrity["provenance_ok"]
         submission.rationale = resolution["rationale"]
-        submission.resolved_at = u64(gl.message_raw.datetime)
+        submission.resolved_at = u64(gl.message_raw["datetime"])
         submission.next_retry_at = (
-            u64(int(gl.message_raw.datetime) + RESOLUTION_RETRY_COOLDOWN_SECONDS)
+            u64(int(gl.message_raw["datetime"]) + RESOLUTION_RETRY_COOLDOWN_SECONDS)
             if resolution["verdict"] == "UNRESOLVED"
             else u64(0)
         )
@@ -1032,7 +1032,7 @@ class MilestoneProof(gl.Contract):
             return "completed"
         next_milestone = self.milestones[project_id][next_index]
         next_milestone.state = OPEN
-        next_milestone.opened_at = u64(gl.message_raw.datetime)
+        next_milestone.opened_at = u64(gl.message_raw["datetime"])
         project.current_milestone = u8(next_index)
         return "opened"
 

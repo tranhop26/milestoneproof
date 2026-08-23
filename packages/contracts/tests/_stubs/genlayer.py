@@ -134,14 +134,9 @@ class _Message:
 
 
 @dataclass
-class _MessageRaw:
-    datetime: int = 0
-
-
-@dataclass
 class _Runtime:
     message: _Message
-    message_raw: _MessageRaw
+    message_raw: dict[str, Any]
     web_responses: dict[str, str]
     prompt_result: Any
     validator_prompt_result: Any
@@ -157,7 +152,7 @@ _runtime_var: ContextVar[_Runtime] = ContextVar(
     "genlayer_runtime",
     default=_Runtime(
         message=_Message(),
-        message_raw=_MessageRaw(),
+        message_raw={"datetime": 0},
         web_responses={},
         prompt_result=None,
         validator_prompt_result=None,
@@ -182,7 +177,7 @@ def set_sender(sender: Address | str) -> None:
 
 def set_now(timestamp: int) -> None:
     runtime = _runtime()
-    runtime.message_raw.datetime = int(timestamp)
+    runtime.message_raw["datetime"] = int(timestamp)
 
 
 def set_chain_id(chain_id: int) -> None:
@@ -233,7 +228,7 @@ def clear_runtime() -> None:
     _runtime_var.set(
         _Runtime(
             message=_Message(),
-            message_raw=_MessageRaw(),
+            message_raw={"datetime": 0},
             web_responses={},
             prompt_result=None,
             validator_prompt_result=None,
@@ -357,6 +352,14 @@ class _RuntimeAccessor:
     def __setattr__(self, name: str, value: Any) -> None:
         target = getattr(_runtime(), object.__getattribute__(self, "_field_name"))
         setattr(target, name, value)
+
+    def __getitem__(self, key: str) -> Any:
+        target = getattr(_runtime(), object.__getattribute__(self, "_field_name"))
+        return target[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        target = getattr(_runtime(), object.__getattribute__(self, "_field_name"))
+        target[key] = value
 
 
 public = _PublicNamespace()

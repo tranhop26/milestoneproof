@@ -126,7 +126,18 @@ export function normalizeConfig(value) {
 
 export function assertSuccessfulFinalized(receipt, executionResult = "FINISHED_WITH_RETURN") {
   const status = receipt?.status_name ?? receipt?.statusName
-  const actualExecutionResult = receipt?.txExecutionResultName ?? receipt?.tx_execution_result_name
+  let actualExecutionResult = receipt?.txExecutionResultName ?? receipt?.tx_execution_result_name
+  if (!actualExecutionResult && (receipt?.result_name ?? receipt?.resultName) === "MAJORITY_AGREE") {
+    const leaderReceipts = receipt?.consensus_data?.leader_receipt
+    const leader = Array.isArray(leaderReceipts)
+      ? leaderReceipts.find((item) => item?.mode === "leader")
+      : undefined
+    if (leader?.execution_result === "SUCCESS" && leader?.result?.status === "return") {
+      actualExecutionResult = "FINISHED_WITH_RETURN"
+    } else if (leader?.execution_result === "ERROR" || leader?.result?.status === "contract_error") {
+      actualExecutionResult = "FINISHED_WITH_ERROR"
+    }
+  }
   if (status !== "FINALIZED") {
     throw new Error(`Transaction did not reach FINALIZED (received ${status || "UNKNOWN"})`)
   }
