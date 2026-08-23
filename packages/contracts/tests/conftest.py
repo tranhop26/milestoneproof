@@ -29,6 +29,8 @@ CONTRACT_MODULE = _load_module("milestoneproof", CONTRACT_PATH)
 SPONSOR = GL.Address("0x1000000000000000000000000000000000000001")
 BUILDER = GL.Address("0x2000000000000000000000000000000000000002")
 STRANGER = GL.Address("0x3000000000000000000000000000000000000003")
+ZERO_ADDRESS = GL.Address("0x0000000000000000000000000000000000000000")
+Revert = GL.UserError
 
 
 class Chain:
@@ -40,6 +42,23 @@ class Chain:
     def call(self, method: str, *args, sender=SPONSOR):
         GL.set_sender(sender)
         return getattr(self.contract, method)(*args)
+
+    def create_project(self, milestones, nonce="grant-001", sender=SPONSOR):
+        return self.call(
+            "create_project",
+            BUILDER,
+            "Release grant",
+            "Ship a verified MVP",
+            milestones,
+            nonce,
+            sender=sender,
+        )
+
+    def project(self, project_id):
+        return self.contract.projects[project_id]
+
+    def milestone(self, project_id, index):
+        return self.contract.milestones[project_id][index]
 
 
 @pytest.fixture
@@ -55,5 +74,17 @@ def valid_milestones():
             "criteria": ["Contract returns the frozen config"],
             "allowed_sources": ["REPOSITORY"],
             "deadline": 1_900_000_000,
-        }
+        },
+        {
+            "title": "Publish release",
+            "criteria": ["Release has a complete changelog"],
+            "allowed_sources": ["RELEASE"],
+            "deadline": 1_900_100_000,
+        },
+        {
+            "title": "Deploy MVP",
+            "criteria": ["Deployment is publicly reachable"],
+            "allowed_sources": ["DEPLOYMENT"],
+            "deadline": 1_900_200_000,
+        },
     ]
