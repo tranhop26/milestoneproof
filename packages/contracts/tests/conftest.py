@@ -31,6 +31,9 @@ BUILDER = GL.Address("0x2000000000000000000000000000000000000002")
 STRANGER = GL.Address("0x3000000000000000000000000000000000000003")
 ZERO_ADDRESS = GL.Address("0x0000000000000000000000000000000000000000")
 Revert = GL.UserError
+COMPLETED = CONTRACT_MODULE.COMPLETED
+OPEN = CONTRACT_MODULE.OPEN
+SUBMITTED = CONTRACT_MODULE.SUBMITTED
 
 
 class Chain:
@@ -60,6 +63,15 @@ class Chain:
     def milestone(self, project_id, index):
         return self.contract.milestones[project_id][index]
 
+    def submission(self, digest):
+        return self.contract.submissions[digest]
+
+    def set_now(self, timestamp):
+        GL.set_now(timestamp)
+
+    def submit(self, project_id, evidence, nonce, milestone_index=0, sender=BUILDER):
+        return self.call("submit_evidence", project_id, milestone_index, evidence, nonce, sender=sender)
+
 
 @pytest.fixture
 def chain() -> Chain:
@@ -88,3 +100,19 @@ def valid_milestones():
             "deadline": 1_900_200_000,
         },
     ]
+
+
+@pytest.fixture
+def open_project(chain, valid_milestones):
+    return chain.create_project(valid_milestones)
+
+
+@pytest.fixture
+def valid_evidence():
+    return [[
+        "REPOSITORY",
+        "https://github.com/acme/milestoneproof/commit/0123456789abcdef0123456789abcdef01234567",
+        "github.com/acme/milestoneproof",
+        "0123456789abcdef0123456789abcdef01234567",
+        1_800_000_000,
+    ]]
