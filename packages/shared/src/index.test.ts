@@ -92,6 +92,23 @@ describe("contract read parsers", () => {
     }
   })
 
+  it("matches the contract's raw URL parity vectors before canonicalization", () => {
+    for (const vector of evidenceVectors.urlParity) {
+      const parse = () => parseEvidenceInput({
+        sourceKind: "REPOSITORY",
+        url: vector.url,
+        subjectRef: "github.com/acme/milestoneproof",
+        versionRef: "0123456789abcdef0123456789abcdef01234567",
+        observedAt: "0",
+      })
+      if (vector.valid) {
+        expect(parse).not.toThrow()
+      } else {
+        expect(parse).toThrow(ContractShapeError)
+      }
+    }
+  })
+
   it("rejects malformed addresses and wrong primitive types", () => {
     const malformedAddress: unknown[] = [...contractShape.project]
     malformedAddress[2] = "0xnot-an-address"

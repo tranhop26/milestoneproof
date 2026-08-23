@@ -246,9 +246,8 @@ function isNonGlobalIpv4(octets: number[]): boolean {
   )
 }
 
-function isGloballyRoutableIpv4(host: string, authority: string): boolean {
-  const authorityMatch = /^(\d+\.\d+\.\d+\.\d+)(?::443)?$/.exec(authority)
-  if (!authorityMatch || authorityMatch[1] !== host) {
+function isGloballyRoutableIpv4(host: string): boolean {
+  if (!/^(0|[1-9]\d*)(\.(0|[1-9]\d*)){3}$/.test(host)) {
     return false
   }
   const octets = host.split(".").map(Number)
@@ -270,12 +269,12 @@ function matchesIpv6Ranges(address: ipaddr.IPv6, ranges: readonly (readonly [str
   return ranges.some(([network, prefix]) => address.match(ipaddr.IPv6.parse(network), prefix))
 }
 
-function isGloballyRoutableIpv6(host: string, authority: string): boolean {
-  const authorityMatch = /^\[([0-9a-f:.]+)\](?::443)?$/i.exec(authority)
-  if (!authorityMatch || !/^\[[0-9a-f:]+\]$/i.test(host)) {
+function isGloballyRoutableIpv6(host: string): boolean {
+  if (!/^\[[0-9a-f:]+(?:%25[^%\]]+)?\]$/i.test(host)) {
     return false
   }
-  const address = ipaddr.IPv6.parse(host.slice(1, -1))
+  const literal = host.slice(1, -1).split("%25", 1)[0]
+  const address = ipaddr.IPv6.parse(literal)
   if (address.isIPv4MappedAddress()) {
     const mapped = address.toIPv4Address().octets
     return !isNonGlobalIpv4(mapped)
@@ -286,40 +285,80 @@ function isGloballyRoutableIpv6(host: string, authority: string): boolean {
   return matchesIpv6Ranges(address, PYTHON_PRIVATE_IPV6_EXCEPTIONS)
 }
 
+function rawUrlAuthority(url: string, field: string): { host: string, port: number | null } {
+  const schemeMatch = /^([a-z][a-z0-9+.-]*):/i.exec(url)
+  if (!schemeMatch || schemeMatch[1].toLowerCase() !== "https") {
+    throw new ContractShapeError(`${field} must be a public HTTPS URL`)
+  }
+  const remainder = url.slice(schemeMatch[0].length)
+  if (!remainder.startsWith("//")) {
+    throw new ContractShapeError(`${field} must be a public HTTPS URL`)
+  }
+  const authority = remainder.slice(2).split(/[/?#]/, 1)[0]
+  if (!authority || authority.includes("@")) {
+    throw new ContractShapeError(`${field} must be a public HTTPS URL`)
+  }
+
+  let host: string
+  let rawPort = ""
+  if (authority.startsWith("[")) {
+    const closingBracket = authority.indexOf("]")
+    if (closingBracket < 0) {
+      throw new ContractShapeError(`${field} must be a public HTTPS URL`)
+    }
+    host = authority.slice(0, closingBracket + 1)
+    const suffix = authority.slice(closingBracket + 1)
+    if (suffix && suffix !== ":" && !/^:\d+$/.test(suffix)) {
+      throw new ContractShapeError(`${field} must be a public HTTPS URL`)
+    }
+    rawPort = suffix.slice(1)
+  } else {
+    const parts = authority.split(":")
+    if (parts.length > 2) {
+      throw new ContractShapeError(`${field} must be a public HTTPS URL`)
+    }
+    [host, rawPort = ""] = parts
+  }
+  const normalizedHost = host.toLowerCase().replace(/\.+$/, "")
+  const scopedIpv6 = /^\[[0-9a-f:]+%25[^%\]]+\]$/i.test(normalizedHost)
+  if (!host || (host.includes("%") && !scopedIpv6) || (rawPort && Number(rawPort) !== 443)) {
+    throw new ContractShapeError(`${field} must be a public HTTPS URL`)
+  }
+  return { host: normalizedHost, port: rawPort ? Number(rawPort) : null }
+}
+
 function publicEvidenceUrl(value: unknown, field: string): string {
   const raw = string(value, field)
   if (!raw || raw.length > 2_000 || /[\\\x00-\x20\x7f-\uffff]/.test(raw)) {
     throw new ContractShapeError(`${field} must be a public HTTPS URL`)
   }
-
-  let parsed: URL
-  try {
-    parsed = new URL(raw)
-  } catch {
-    throw new ContractShapeError(`${field} must be a public HTTPS URL`)
-  }
-
-  const authority = raw.slice("https://".length).split(/[/?#]/, 1)[0]
-  const host = parsed.hostname.toLowerCase().replace(/\.$/, "")
+  const { host, port } = rawUrlAuthority(raw, field)
   const isReservedHost = RESERVED_HOSTS.some((reserved) => host === reserved || host.endsWith(`.${reserved}`))
   const isNumericHost = /^[0-9.]+$/.test(host)
-  const isIpv6Host = /^\[[0-9a-f:]+\]$/i.test(host)
+  const isIpv6Host = /^\[[0-9a-f:]+(?:%25[^%\]]+)?\]$/i.test(host)
   const validDnsName = host.split(".").length >= 2
     && host.split(".").every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label))
   if (
-    parsed.protocol !== "https:"
-    || parsed.username
-    || parsed.password
-    || authority.includes("@")
-    || parsed.hash
-    || parsed.port
-    || !host
+    !host
     || isReservedHost
-    || isNumericHost && !isGloballyRoutableIpv4(host, authority)
-    || isIpv6Host && !isGloballyRoutableIpv6(host, authority)
+    || isNumericHost && !isGloballyRoutableIpv4(host)
+    || isIpv6Host && !isGloballyRoutableIpv6(host)
     || !isIpv6Host && !validDnsName
+    || port !== null && port !== 443
   ) {
     throw new ContractShapeError(`${field} must be a public HTTPS URL`)
+  }
+
+  if (!host.includes("%25")) {
+    let parsed: URL
+    try {
+      parsed = new URL(raw)
+    } catch {
+      throw new ContractShapeError(`${field} must be a public HTTPS URL`)
+    }
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.hash) {
+      throw new ContractShapeError(`${field} must be a public HTTPS URL`)
+    }
   }
   return raw
 }

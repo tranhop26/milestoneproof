@@ -43,5 +43,21 @@
     "https://0177.0.0.1/evidence",
     "https://127.000.000.001/evidence",
     "https://2130706433/evidence"
+  ],
+  "urlParity": [
+    { "url": "https:example.com/e", "valid": false },
+    { "url": "https:///example.com/e", "valid": false },
+    { "url": "https:////example.com/e", "valid": false },
+    { "url": "https://%65xample.com/e", "valid": false },
+    { "url": "https://%67ithub.com/e", "valid": false },
+    { "url": "https://[2606:4700:4700::1111%25zone%2Fthing]/e", "valid": false },
+    { "url": "https://8.8.8.8./e", "valid": true },
+    { "url": "https://example.com./e", "valid": true },
+    { "url": "https://example.com../e", "valid": true },
+    { "url": "https://[2606:4700:4700::1111]:/e", "valid": true },
+    { "url": "https://[2606:4700:4700::1111%25zone]/e", "valid": true },
+    { "url": "https://[2606:4700:4700::1111%25zone!]/e", "valid": true },
+    { "url": "https://[2606:4700:4700::1111%25zone:thing]/e", "valid": true },
+    { "url": "https://github.com//e", "valid": true }
   ]
 }

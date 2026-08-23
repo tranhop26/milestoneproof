@@ -6,12 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from conftest import BUILDER, Chain, COMPLETED, OPEN, OTHER_BUILDER, Revert, STRANGER, SUBMITTED
+from conftest import BUILDER, CONTRACT_MODULE, Chain, COMPLETED, OPEN, OTHER_BUILDER, Revert, STRANGER, SUBMITTED
 
 
 VECTORS = json.loads((Path(__file__).parents[2] / "shared" / "evidence-vectors.json").read_text(encoding="utf-8"))
 INVALID_URLS = VECTORS["invalid"]
 VALID_URLS = VECTORS["valid"]
+URL_PARITY_VECTORS = VECTORS["urlParity"]
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
 
@@ -77,6 +78,16 @@ def test_valid_public_https_urls_are_accepted(chain, valid_milestones, valid_evi
         evidence = deepcopy(valid_evidence)
         evidence[0][1] = url
         assert chain.submit(project_id, evidence=evidence, nonce=f"public-submit-{index}") == chain.milestone(project_id, 0).current_submission_id
+
+
+@pytest.mark.parametrize("vector", URL_PARITY_VECTORS, ids=lambda vector: vector["url"])
+def test_url_parity_vectors_match_the_contract_policy(vector):
+    url = vector["url"]
+    if vector["valid"]:
+        CONTRACT_MODULE._validate_public_evidence_url(url)
+    else:
+        with pytest.raises(Revert, match="unsafe evidence URL"):
+            CONTRACT_MODULE._validate_public_evidence_url(url)
 
 
 def test_wrong_builder_cannot_submit_without_mutation(chain, open_project, valid_evidence):
