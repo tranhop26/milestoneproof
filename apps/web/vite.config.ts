@@ -5,6 +5,6 @@ export default defineConfig({
   plugins: [react()],
   build: {
     // GenLayerJS includes its Viem transport and calldata codecs in the browser client.
-    chunkSizeWarningLimit: 800,
+    chunkSizeWarningLimit: 850,
   },
 })
