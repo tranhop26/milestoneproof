@@ -10,6 +10,10 @@ class UserError(Exception):
     pass
 
 
+class ProtocolError(Exception):
+    pass
+
+
 class Address(str):
     def __new__(cls, value: str) -> "Address":
         normalized = value.lower()
@@ -55,12 +59,21 @@ class u256(_UInt):
     bits = 256
 
 
+_storage_allocation_allowed = False
+
+
 class DynArray(list):
-    pass
+    def __init__(self, *args: Any) -> None:
+        if type(self) is DynArray and not _storage_allocation_allowed:
+            raise TypeError("DynArray must be allocated with storage.inmem_allocate")
+        super().__init__(*args)
 
 
 class TreeMap(dict):
-    pass
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        if not _storage_allocation_allowed:
+            raise TypeError("TreeMap must be allocated with storage.inmem_allocate")
+        super().__init__(*args, **kwargs)
 
 
 def allow_storage(cls: type[Any]) -> type[Any]:
@@ -104,7 +117,9 @@ class _Runtime:
     message_raw: _MessageRaw
     web_responses: dict[str, str]
     prompt_result: Any
+    validator_prompt_result: Any
     prompt_handler: Callable[..., Any] | None
+    nondet_phase: str
     events: list[tuple[str, dict[str, Any]]]
 
 
@@ -115,7 +130,9 @@ _runtime_var: ContextVar[_Runtime] = ContextVar(
         message_raw=_MessageRaw(),
         web_responses={},
         prompt_result=None,
+        validator_prompt_result=None,
         prompt_handler=None,
+        nondet_phase="leader",
         events=[],
     ),
 )
@@ -150,7 +167,12 @@ def set_web_response(url: str, content: str) -> None:
 def set_prompt_result(result: Any) -> None:
     runtime = _runtime()
     runtime.prompt_result = result
+    runtime.validator_prompt_result = result
     runtime.prompt_handler = None
+
+
+def set_validator_prompt_result(result: Any) -> None:
+    _runtime().validator_prompt_result = result
 
 
 def set_prompt_handler(handler: Callable[..., Any]) -> None:
@@ -165,7 +187,9 @@ def clear_runtime() -> None:
             message_raw=_MessageRaw(),
             web_responses={},
             prompt_result=None,
+            validator_prompt_result=None,
             prompt_handler=None,
+            nondet_phase="leader",
             events=[],
         )
     )
@@ -176,6 +200,15 @@ def emit(name: str, **payload: Any) -> None:
 
 
 class _StorageNamespace:
+    @staticmethod
+    def inmem_allocate(storage_type: Any, *args: Any, **kwargs: Any) -> Any:
+        global _storage_allocation_allowed
+        _storage_allocation_allowed = True
+        try:
+            return storage_type(*args, **kwargs)
+        finally:
+            _storage_allocation_allowed = False
+
     @staticmethod
     def copy_to_memory(value: Any) -> Any:
         return deepcopy(value)
@@ -195,7 +228,38 @@ class _NondetNamespace:
         runtime = _runtime()
         if runtime.prompt_handler is not None:
             return runtime.prompt_handler(*args, **kwargs)
+        if runtime.nondet_phase == "validator":
+            return runtime.validator_prompt_result
         return runtime.prompt_result
+
+
+@dataclass
+class Return:
+    calldata: Any
+
+
+class _VmNamespace:
+    Return = Return
+    UserError = UserError
+
+    @staticmethod
+    def run_nondet_unsafe(
+        leader_fn: Callable[[], Any], validator_fn: Callable[[Return], bool]
+    ) -> Any:
+        runtime = _runtime()
+        try:
+            runtime.nondet_phase = "leader"
+            leader_result = leader_fn()
+            runtime.nondet_phase = "validator"
+            try:
+                accepted = validator_fn(Return(deepcopy(leader_result)))
+            except Exception as error:
+                raise ProtocolError("validator execution disagreed") from error
+            if accepted is not True:
+                raise ProtocolError("semantic consensus was not reached")
+            return leader_result
+        finally:
+            runtime.nondet_phase = "leader"
 
 
 class _SemanticNamespace:
@@ -234,6 +298,7 @@ public = _PublicNamespace()
 storage = _StorageNamespace()
 nondet = _NondetNamespace()
 semantic = _SemanticNamespace()
+vm = _VmNamespace()
 message = _RuntimeAccessor("message")
 message_raw = _RuntimeAccessor("message_raw")
 

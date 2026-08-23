@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -35,6 +37,12 @@ Revert = GL.UserError
 COMPLETED = CONTRACT_MODULE.COMPLETED
 OPEN = CONTRACT_MODULE.OPEN
 SUBMITTED = CONTRACT_MODULE.SUBMITTED
+APPROVED_MILESTONE = CONTRACT_MODULE.APPROVED_MILESTONE
+NONE = CONTRACT_MODULE.NONE
+APPROVED = CONTRACT_MODULE.APPROVED
+REJECTED = CONTRACT_MODULE.REJECTED
+REQUEST_MORE_INFO = CONTRACT_MODULE.REQUEST_MORE_INFO
+UNRESOLVED = CONTRACT_MODULE.UNRESOLVED
 
 
 class Chain:
@@ -51,7 +59,13 @@ class Chain:
         GL.set_chain_id(self.chain_id)
         GL.set_contract_address(self.contract_address)
         GL.set_sender(sender)
-        return getattr(self.contract, method)(*args)
+        snapshot = deepcopy(self.contract.__dict__)
+        try:
+            return getattr(self.contract, method)(*args)
+        except Exception:
+            self.contract.__dict__.clear()
+            self.contract.__dict__.update(snapshot)
+            raise
 
     def create_project(self, milestones, nonce="grant-001", sender=SPONSOR, builder=BUILDER):
         return self.call(
@@ -86,6 +100,39 @@ class Chain:
 
     def submit(self, project_id, evidence, nonce, milestone_index=0, sender=BUILDER):
         return self.call("submit_evidence", project_id, milestone_index, evidence, nonce, sender=sender)
+
+    def set_raw_verdict(self, raw, *, validator_raw=None):
+        GL.set_prompt_result(raw)
+        if validator_raw is not None:
+            GL.set_validator_prompt_result(validator_raw)
+
+    def set_verdict(
+        self,
+        *,
+        verdict,
+        criteria,
+        missing,
+        integrity,
+        rationale="Evidence supports the semantic outcome.",
+        validator=None,
+    ):
+        flags = {
+            "subject_match": integrity[0],
+            "version_match": integrity[1],
+            "fresh": integrity[2],
+            "provenance_ok": integrity[3],
+        }
+        result = json.dumps({
+            "verdict": verdict,
+            "criteria_met": criteria,
+            "missing_criteria": missing,
+            "integrity": flags,
+            "rationale": rationale,
+        })
+        validator_result = None
+        if validator is not None:
+            validator_result = json.dumps(validator)
+        self.set_raw_verdict(result, validator_raw=validator_result)
 
 
 @pytest.fixture
