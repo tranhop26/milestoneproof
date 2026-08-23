@@ -2,7 +2,7 @@
 
 MilestoneProof is `INTENTIONALLY_FROZEN`. Recovery never mutates or redirects the old contract.
 
-1. Freeze new writes in the UI by removing `VITE_MILESTONEPROOF_ADDRESS` from the deployed frontend environment and redeploying the disabled configuration. Keep the old address visible as read-only context.
+1. Freeze new writes in the current UI by removing `VITE_MILESTONEPROOF_ADDRESS` from the deployed frontend environment and redeploying the disabled configuration. Do not keep the old address configured in that UI; readers reach it through the preserved manifest and explorer link.
 2. Preserve the old deployment manifest, transaction link, source SHA-256, and verification evidence unchanged.
 3. Diagnose the defect, patch a successor contract, and document the affected states and migration limits.
 4. From a clean install, rerun lint, typecheck, build, all direct tests, integration tests, secret scan, and deployment dry-run.

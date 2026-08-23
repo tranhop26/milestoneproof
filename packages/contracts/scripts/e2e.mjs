@@ -228,6 +228,34 @@ export async function runLiveE2e({ env = process.env, argv = process.argv.slice(
     args: [projectId, 0, evidence, `e2e-unauthorized:${randomUUID()}`],
     value: 0n,
   })
+  const [projectAfterUnauthorized, milestoneAfterUnauthorized] = await Promise.all([
+    readClient.readContract({
+      address: contractAddress,
+      functionName: "get_project",
+      args: [projectId],
+    }),
+    readClient.readContract({
+      address: contractAddress,
+      functionName: "get_milestone",
+      args: [projectId, 0],
+    }),
+  ])
+  const currentSubmissionIdAfterUnauthorized = integer(
+    milestoneAfterUnauthorized?.[10],
+    "current submission id after unauthorized write",
+  )
+  if (integer(projectAfterUnauthorized?.[6], "project status after unauthorized write") !== 0n
+    || integer(projectAfterUnauthorized?.[7], "project milestone after unauthorized write") !== 0n
+    || integer(milestoneAfterUnauthorized?.[7], "milestone state after unauthorized write") !== 1n
+    || integer(milestoneAfterUnauthorized?.[9], "submission count after unauthorized write") !== 0n
+    || currentSubmissionIdAfterUnauthorized !== 0n) {
+    throw new Error("Unauthorized submission changed contract state")
+  }
+  const unauthorizedSubmissionReadback = {
+    project: projectAfterUnauthorized,
+    milestone: milestoneAfterUnauthorized,
+    currentSubmissionId: currentSubmissionIdAfterUnauthorized,
+  }
 
   const submitEvidence = await successfulWrite(builderClient, sdk, {
     account: builder,
@@ -285,6 +313,7 @@ export async function runLiveE2e({ env = process.env, argv = process.argv.slice(
         before: balancesBeforeFunding,
         after: balancesAfterFunding,
       },
+      unauthorizedSubmission: unauthorizedSubmissionReadback,
       projectId,
       submissionId,
       project,

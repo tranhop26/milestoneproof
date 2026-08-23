@@ -36,7 +36,7 @@ Every frontend write renders `AWAITING_SIGNATURE` → `PENDING` → `FINALIZED` 
 
 ## Setup
 
-Requirements: Node.js 20+, pnpm 10.18.2, Python 3.12+, and `uvx` for the GenVM linter.
+Requirements: Node.js 20+, pnpm 10.18.2, Python 3.12+, `uvx` for the GenVM linter, and an installed Google Chrome browser for local Playwright tests. The Playwright configuration uses the system `chrome` channel; it does not require bundled Chromium.
 
 ```sh
 cp .env.example .env
@@ -69,10 +69,11 @@ pnpm lint                 # GenVM and web lint
 pnpm typecheck            # all workspace type checks
 pnpm build                # shared package and production web build
 pnpm test                 # direct contract, shared, and web tests
+pnpm --filter @milestoneproof/web e2e  # reproducible local Playwright suite
 pnpm deploy:contract:dry-run
 pnpm verify:contract -- --manifest deployments/studionet.json
 pnpm e2e:contract:live -- --manifest deployments/studionet.json
-pnpm e2e:live
+pnpm e2e:live             # state-changing deployed-browser flow; confirmation-gated
 ```
 
 ## Contract deployment

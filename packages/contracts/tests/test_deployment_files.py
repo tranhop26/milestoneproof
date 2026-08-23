@@ -149,7 +149,10 @@ export const createClient = ({ account } = {}) => {
     writeContract: async ({ functionName }) => {
       log(`write:${account.address}:${functionName}`);
       if (functionName === "create_project") { stage = 1; return hashes[0]; }
-      if (functionName === "submit_evidence" && account.address === addresses[2]) return hashes[1];
+      if (functionName === "submit_evidence" && account.address === addresses[2]) {
+        if (process.env.FAKE_UNAUTHORIZED_MUTATION === "YES") stage = 2;
+        return hashes[1];
+      }
       if (functionName === "submit_evidence") { stage = 2; return hashes[2]; }
       if (functionName === "resolve_submission") { stage = 3; return hashes[3]; }
       throw new Error("unexpected write");
@@ -223,7 +226,12 @@ process.stdout.write(JSON.stringify(values));
     assert values == {
         "VITE_GENLAYER_NETWORK": "studionet",
         "VITE_MILESTONEPROOF_ADDRESS": "",
+        "GENLAYER_NETWORK": "studionet",
         "DEPLOYER_PRIVATE_KEY": "",
+        "DEPLOYMENT_MANIFEST_PATH": "",
+        "E2E_CONTRACT_ADDRESS": "",
+        "CONFIRM_LIVE_E2E": "",
+        "CONFIRM_DEPLOY": "",
         "VERCEL_TOKEN": "",
     }
 
@@ -614,6 +622,10 @@ def test_live_e2e_generates_actors_proves_success_and_unauthorized_error(tmp_pat
     assert len(set(evidence["actors"].values())) == 3
     assert evidence["transactions"]["createProject"]["executionResult"] == "FINISHED_WITH_RETURN"
     assert evidence["transactions"]["unauthorizedSubmission"]["executionResult"] == "FINISHED_WITH_ERROR"
+    assert evidence["readback"]["unauthorizedSubmission"]["project"][6] == "0"
+    assert evidence["readback"]["unauthorizedSubmission"]["milestone"][7] == "1"
+    assert evidence["readback"]["unauthorizedSubmission"]["milestone"][9] == "0"
+    assert evidence["readback"]["unauthorizedSubmission"]["currentSubmissionId"] == "0"
     assert evidence["transactions"]["submitEvidence"]["executionResult"] == "FINISHED_WITH_RETURN"
     assert evidence["transactions"]["resolveSubmission"]["executionResult"] == "FINISHED_WITH_RETURN"
     assert evidence["readback"]["project"][6] == "1"
@@ -633,6 +645,28 @@ def test_live_e2e_generates_actors_proves_success_and_unauthorized_error(tmp_pat
     assert "read:get_sponsor_project_count" in calls
     assert "read:get_sponsor_project_ids" in calls
     assert evidence["transactions"]["funding"] == ["0x" + ("f" * 64)] * 3
+
+
+def test_live_e2e_rejects_unauthorized_state_mutation_before_builder_submission(tmp_path):
+    fake = _e2e_sdk(tmp_path)
+    evidence_path = tmp_path / "live-contract.json"
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(_manifest_data()), encoding="utf-8")
+    result = _run(E2E, "--manifest", str(manifest_path), env={
+        "NODE_ENV": "test",
+        "MILESTONEPROOF_SDK_MODULE": fake.as_uri(),
+        "FAKE_CALL_LOG": str(tmp_path / "calls.log"),
+        "LIVE_EVIDENCE_PATH": str(evidence_path),
+        "CONFIRM_LIVE_E2E": "YES",
+        "FAKE_UNAUTHORIZED_MUTATION": "YES",
+    })
+
+    assert result.returncode != 0
+    assert "unauthorized submission changed contract state" in result.stderr.lower()
+    calls = (tmp_path / "calls.log").read_text(encoding="utf-8")
+    assert calls.count("write:") == 2
+    assert calls.count("submit_evidence") == 1
+    assert not evidence_path.exists()
 
 
 @pytest.mark.parametrize("response", ["TRUE", "OPAQUE", "NULL"])

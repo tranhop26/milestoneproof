@@ -7,7 +7,7 @@ Live fields remain `PENDING` until an authorized Studionet deployment and deploy
 | Sponsor | Create project with frozen builder and milestones | `create_project` | `PENDING` | `PENDING` | `PENDING` project ID and frozen fields | Live browser E2E after deployment |
 | Builder | Submit repository evidence | `submit_evidence` | `PENDING` | `PENDING` | `PENDING` submission ID, digest, and `SUBMITTED` milestone | Live browser E2E after deployment |
 | Sponsor or builder | Resolve sufficient evidence | `resolve_submission` | `PENDING` | `PENDING` | `PENDING` `APPROVED` and next milestone `OPEN` | Live browser E2E after deployment |
-| Unauthorized wallet | Attempt builder-only evidence submission | `submit_evidence` | `PENDING` | `PENDING` expected execution error | `PENDING` unchanged milestone/submission | Live browser E2E after deployment |
+| Unauthorized wallet | Attempt builder-only evidence submission | `submit_evidence` | `PENDING` | `PENDING` expected `FINISHED_WITH_ERROR` | `PENDING` immediate contract readback: project `ACTIVE`, milestone `OPEN`, submission count/current ID zero | `packages/contracts/scripts/e2e.mjs` live contract E2E after deployment |
 | Local fixture | Render successful lifecycle without a chain transaction | adapter fixture | N/A | Simulated `FINALIZED` / `SUCCESS` | Simulated `READBACK`; one read call | `apps/web/e2e/live.spec.ts` successful receipt test |
 | Local fixture | Reject failed execution before readback | adapter fixture | N/A | Simulated `FINALIZED` / no success | Zero readback calls | `apps/web/e2e/live.spec.ts` failed receipt test |
 
