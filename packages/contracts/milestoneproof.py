@@ -322,9 +322,21 @@ class MilestoneProof(gl.Contract):
             raise gl.UserError("unsafe evidence URL")
 
     def _reserved_host(self, host: str) -> bool:
-        if host in ("localhost", "metadata.google.internal", "metadata.azure.internal"):
-            return True
-        return host.endswith((".localhost", ".local", ".test", ".invalid", ".example", ".nip.io", ".sslip.io", ".xip.io", ".localtest.me", ".traefik.me"))
+        reserved_hosts = (
+            "localhost",
+            "local",
+            "test",
+            "invalid",
+            "example",
+            "metadata.google.internal",
+            "metadata.azure.internal",
+            "nip.io",
+            "sslip.io",
+            "xip.io",
+            "localtest.me",
+            "traefik.me",
+        )
+        return any(host == reserved_host or host.endswith(f".{reserved_host}") for reserved_host in reserved_hosts)
 
     def _looks_numeric_host(self, host: str) -> bool:
         return bool(host) and all(character.isdigit() or character == "." for character in host)

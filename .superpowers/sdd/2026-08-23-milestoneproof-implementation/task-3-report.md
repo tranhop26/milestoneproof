@@ -54,3 +54,21 @@ Files changed: `packages/contracts/milestoneproof.py`, `packages/contracts/tests
 ### Concerns
 
 - Task 4 must revalidate the resolved final fetch target, including redirects, before rendering arbitrary public DNS evidence. Task 3 rejects literal/private/reserved and known alias forms only.
+
+## Fix Round 2
+
+### Implementation and self-review
+
+- `MilestoneProof._reserved_host` now applies exact-or-subdomain matching to every reserved and private-alias provider, including `localtest.me`, `nip.io`, `sslip.io`, `xip.io`, and `traefik.me`.
+- Added `https://localtest.me/evidence` to the shared invalid vectors; `test_unsafe_evidence_url_reverts_without_mutation` proves the revert and unchanged state/maps through the shared vector table.
+- Reviewed adjacent checks: the same exact-or-subdomain predicate now covers every provider in the helper rather than mixing equality and dotted suffix tests.
+
+### RED / GREEN
+
+- RED: `pnpm test:contract -- -k unsafe_evidence_url -q` — 1 expected failure (`https://localtest.me/evidence` accepted).
+- GREEN targeted: `pnpm test:contract -- -k unsafe_evidence_url -q` — 29 passed.
+- GREEN focused: `pnpm test:contract -- tests/test_evidence.py -q` — 82 passed.
+- GREEN full: `pnpm test:contract` — 82 passed.
+- `git diff --check` — clean.
+
+Files: `packages/contracts/milestoneproof.py`, `packages/shared/evidence-vectors.json`, and this report.

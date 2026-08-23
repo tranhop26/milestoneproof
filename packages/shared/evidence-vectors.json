@@ -28,6 +28,7 @@
     "https://127.0.0.1.nip.io/evidence",
     "https://127.0.0.1.sslip.io/evidence",
     "https://127.0.0.1.xip.io/evidence",
+    "https://localtest.me/evidence",
     "https://127.0.0.1.localtest.me/evidence",
     "https://127.0.0.1.traefik.me/evidence",
     "https://github.com/acme/milestoneproof\nunsafe",
