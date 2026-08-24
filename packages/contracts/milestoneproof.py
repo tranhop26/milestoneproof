@@ -488,7 +488,8 @@ class MilestoneProof(gl.Contract):
 
     @gl.public.write
     def create_project(self, builder: gl.Address, title: str, description: str, milestones: list, client_nonce: str) -> u256:
-        sponsor = gl.message.sender_address
+        sponsor = gl.Address(str(gl.message.sender_address))
+        builder = gl.Address(str(builder))
         self._validate_project_input(sponsor, builder, title, description, milestones, client_nonce)
         nonce_key = self._sponsor_nonce_key(sponsor, client_nonce)
         if self.sponsor_nonces.get(nonce_key, False):
@@ -566,7 +567,7 @@ class MilestoneProof(gl.Contract):
         return u256(
             len(
                 self.sponsor_project_ids.get(
-                    sponsor, []
+                    gl.Address(str(sponsor)), []
                 )
             )
         )
@@ -576,7 +577,7 @@ class MilestoneProof(gl.Contract):
         return u256(
             len(
                 self.builder_project_ids.get(
-                    builder, []
+                    gl.Address(str(builder)), []
                 )
             )
         )
@@ -585,7 +586,7 @@ class MilestoneProof(gl.Contract):
     def get_sponsor_project_ids(self, sponsor: gl.Address, offset: u256, limit: u8) -> list:
         return self._project_id_page(
             self.sponsor_project_ids.get(
-                sponsor, []
+                gl.Address(str(sponsor)), []
             ),
             offset,
             limit,
@@ -595,7 +596,7 @@ class MilestoneProof(gl.Contract):
     def get_builder_project_ids(self, builder: gl.Address, offset: u256, limit: u8) -> list:
         return self._project_id_page(
             self.builder_project_ids.get(
-                builder, []
+                gl.Address(str(builder)), []
             ),
             offset,
             limit,

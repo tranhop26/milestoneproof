@@ -13,7 +13,7 @@ def _inject_message_with_pipe(vm: VMContext) -> None:
     from genlayer.py.types import Address
 
     def address(value):
-        return Address(value) if isinstance(value, bytes) else value
+        return str(Address(value)) if isinstance(value, bytes) else str(value)
 
     encoded = calldata.encode({
         "contract_address": address(vm._contract_address),
@@ -53,8 +53,9 @@ def main() -> None:
     from genlayer import Address
 
     builder = Address(builder)
+    builder_calldata = str(builder)
     project_id = contract.create_project(
-        builder,
+        builder_calldata,
         "Runtime probe",
         "Exercise the production SDK storage and timestamp paths.",
         [{
@@ -68,6 +69,8 @@ def main() -> None:
     project = contract.get_project(project_id)
     if int(project[1]) != int(project_id):
         raise AssertionError("project readback mismatch")
+    if int(contract.get_builder_project_count(builder_calldata)) != 1:
+        raise AssertionError("string address readback mismatch")
     milestone = contract.get_milestone(project_id, 0)
     with vm.prank(builder):
         submission_id = contract.submit_evidence(
