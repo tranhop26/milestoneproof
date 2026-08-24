@@ -429,7 +429,7 @@ def _evaluate_resolution(context: dict, criteria: list, evidence: list) -> dict:
     for index, item in enumerate(evidence):
         try:
             _validate_public_evidence_url(item["url"])
-            rendered = gl.nondet.web.render(item["url"], mode="text")
+            rendered = gl.nondet.web.render(item["url"], mode="html")
         except Exception:
             return _unresolved_resolution_output(len(criteria))
         if not isinstance(rendered, str) or not rendered:

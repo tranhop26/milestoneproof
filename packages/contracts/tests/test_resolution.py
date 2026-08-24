@@ -517,6 +517,27 @@ def test_prompt_injection_is_fenced_as_untrusted_and_rendered_text_is_capped(cha
     assert len(prompts) == 2
 
 
+def test_resolution_uses_supported_html_web_render_mode(chain, submitted, monkeypatch):
+    original_render = GL.nondet.web.render
+    render_modes = []
+
+    def record_render_mode(url, mode="html"):
+        render_modes.append(mode)
+        return original_render(url, mode=mode)
+
+    monkeypatch.setattr(GL.nondet.web, "render", record_render_mode)
+    chain.set_verdict(
+        verdict="APPROVED",
+        criteria=[True, True],
+        missing=[],
+        integrity=[True, True, True, True],
+    )
+
+    chain.call("resolve_submission", submitted, sender=SPONSOR)
+
+    assert render_modes == ["html", "html"]
+
+
 def test_resolution_prompt_example_matches_single_frozen_criterion(chain):
     chain.set_now(1_800_000_000)
     project_id = chain.create_project([{
