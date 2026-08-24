@@ -173,8 +173,8 @@ export const createClient = ({ account } = {}) => {
       if (functionName === "get_project_count") return 999n;
       if (functionName === "get_sponsor_project_count") return 1n;
       if (functionName === "get_sponsor_project_ids") return [7n];
-      if (functionName === "get_project") return [1n, 7n, addresses[0], process.env.FAKE_PROJECT_BUILDER || addresses[1], process.env.FAKE_PROJECT_TITLE || "SDK release proof", "Verify a public GenLayer SDK release commit through semantic consensus.", stage === 3 ? 1n : 0n, 0n, 1800000000n, 1n];
-      if (functionName === "get_milestone") return [1n, 7n, 0n, process.env.FAKE_MILESTONE_TITLE || "Verify v1.1.8", ["The public genlayerlabs/genlayer-js repository contains commit 573e6bbc9c3aa7d3e40c37505d0a83a1ab1182c1 for release v1.1.8."], ["REPOSITORY"], 1900000000n, stage === 3 ? 3n : (stage === 2 ? 2n : 1n), 1800000000n, stage >= 2 ? 1n : 0n, stage >= 2 ? 9n : 0n];
+      if (functionName === "get_project") return [1n, 7n, addresses[0], process.env.FAKE_PROJECT_BUILDER || addresses[1], process.env.FAKE_PROJECT_TITLE || "SDK npm release proof", "Verify a public GenLayer SDK package release through semantic consensus.", stage === 3 ? 1n : 0n, 0n, 1800000000n, 1n];
+      if (functionName === "get_milestone") return [1n, 7n, 0n, process.env.FAKE_MILESTONE_TITLE || "Verify v1.1.8", ["The public npm registry lists genlayer-js version 1.1.8."], ["RELEASE"], 1900000000n, stage === 3 ? 3n : (stage === 2 ? 2n : 1n), 1800000000n, stage >= 2 ? 1n : 0n, stage >= 2 ? 9n : 0n];
       if (functionName === "get_submission") return [2n, 9n, 7n, 0n, 1n, stage === 3 ? 1n : 0n, addresses[1], 1800000010n, [], 9n, [true], [], true, true, true, true, "Approved", 1800000020n, 1n, 0n, 1900000000n];
       throw new Error("unexpected read");
     },

@@ -19,15 +19,15 @@ import {
 } from "./lib.mjs"
 
 const FIXTURE = {
-  sourceKind: "REPOSITORY",
-  url: "https://github.com/genlayerlabs/genlayer-js/commit/573e6bbc9c3aa7d3e40c37505d0a83a1ab1182c1",
-  subjectRef: "github.com/genlayerlabs/genlayer-js",
-  versionRef: "573e6bbc9c3aa7d3e40c37505d0a83a1ab1182c1",
-  criterion: "The public genlayerlabs/genlayer-js repository contains commit 573e6bbc9c3aa7d3e40c37505d0a83a1ab1182c1 for release v1.1.8.",
+  sourceKind: "RELEASE",
+  url: "https://www.npmjs.com/package/genlayer-js/v/1.1.8",
+  subjectRef: "npmjs.com/package/genlayer-js",
+  versionRef: "1.1.8",
+  criterion: "The public npm registry lists genlayer-js version 1.1.8.",
 }
 
-const PROJECT_TITLE = "SDK release proof"
-const PROJECT_DESCRIPTION = "Verify a public GenLayer SDK release commit through semantic consensus."
+const PROJECT_TITLE = "SDK npm release proof"
+const PROJECT_DESCRIPTION = "Verify a public GenLayer SDK package release through semantic consensus."
 const STUDIONET_FUNDING_METHOD = "sim_fundAccount"
 const STUDIONET_FUNDING_AMOUNT = 100
 

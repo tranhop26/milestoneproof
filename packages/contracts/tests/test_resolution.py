@@ -1,6 +1,7 @@
 from copy import deepcopy
 from dataclasses import fields, is_dataclass
 import json
+import re
 from types import BuiltinFunctionType, FunctionType, ModuleType
 
 import cloudpickle
@@ -512,6 +513,44 @@ def test_prompt_injection_is_fenced_as_untrusted_and_rendered_text_is_capped(cha
 
     assert chain.submission(submitted).verdict == REJECTED
     assert len(prompts) == 2
+
+
+def test_resolution_prompt_example_matches_single_frozen_criterion(chain):
+    chain.set_now(1_800_000_000)
+    project_id = chain.create_project([{
+        "title": "Verify one release",
+        "criteria": ["The public package page lists version 1.1.8"],
+        "allowed_sources": ["RELEASE"],
+        "deadline": 1_900_000_000,
+    }])
+    submission_id = chain.submit(project_id, [[
+        "RELEASE",
+        EVIDENCE_URL,
+        "npmjs.com/package/genlayer-js",
+        "1.1.8",
+        1_800_000_000,
+    ]], "single-criterion")
+    GL.set_web_response(EVIDENCE_URL, "genlayer-js 1.1.8 is a public release.")
+
+    def follow_prompt_example(prompt):
+        match = re.search(r'"criteria_met": \[([^]]*)\]', prompt)
+        assert match is not None
+        example_count = len([
+            item for item in match.group(1).split(",") if item.strip()
+        ])
+        return json.dumps(verdict_object(
+            "APPROVED",
+            [True] * example_count,
+            [],
+            [True, True, True, True],
+        ))
+
+    GL.set_prompt_handler(follow_prompt_example)
+    chain.call("resolve_submission", submission_id, sender=SPONSOR)
+
+    assert chain.submission(submission_id).verdict == APPROVED
+    assert chain.milestone(project_id, 0).state == APPROVED_MILESTONE
+    assert chain.project(project_id).status == COMPLETED
 
 
 def test_supplement_resolution_prompt_gives_both_nodes_original_and_effective_deadlines(chain):

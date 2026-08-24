@@ -351,6 +351,8 @@ def _resolution_prompt(context: dict, criteria: list, rendered_evidence: list) -
         criteria_lines.append(f"{index}: {_sanitize_untrusted(criterion)}")
     criteria_block = "\n".join(criteria_lines)
     evidence_block = "\n".join(rendered_evidence)
+    criteria_example = ", ".join("false" for _ in criteria)
+    missing_example = ", ".join(str(index) for index in range(len(criteria)))
     return f"""
 You are resolving a MilestoneProof submission from public evidence.
 Decide whether the evidence bound to this exact project, builder, milestone,
@@ -406,8 +408,8 @@ END_UNTRUSTED_CRITERIA
 Return only one JSON object with exactly this schema:
 {{
   "verdict": "APPROVED|REJECTED|REQUEST_MORE_INFO|UNRESOLVED",
-  "criteria_met": [true, false],
-  "missing_criteria": [1],
+  "criteria_met": [{criteria_example}],
+  "missing_criteria": [{missing_example}],
   "integrity": {{
     "subject_match": true,
     "version_match": true,
@@ -416,7 +418,8 @@ Return only one JSON object with exactly this schema:
   }},
   "rationale": "brief explanation"
 }}
-Use zero-based criterion indexes. APPROVED is permitted only when every
+There are exactly {len(criteria)} frozen criteria, so criteria_met must contain
+exactly {len(criteria)} Booleans. Use zero-based criterion indexes. APPROVED is permitted only when every
 criterion Boolean and every integrity flag is true and missing_criteria is empty.
 """
 
