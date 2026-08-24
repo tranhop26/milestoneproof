@@ -438,7 +438,7 @@ def _evaluate_resolution(context: dict, criteria: list, evidence: list) -> dict:
 
     prompt = _resolution_prompt(context, criteria, rendered_evidence)
     try:
-        raw_output = gl.nondet.exec_prompt(prompt)
+        raw_output = gl.nondet.exec_prompt(prompt, response_format="json")
     except Exception:
         return _unresolved_resolution_output(len(criteria))
     return _normalize_resolution_output(raw_output, len(criteria))
