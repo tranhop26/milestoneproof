@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-24T06:09:18.019Z",
+  "network": "studionet",
+  "contractAddress": "0xE4081A4E9CD3A6eAc9Ce59f858257E1dee384986",
+  "actors": {
+    "sponsor": "0x87cCAd4E950Ea3070aFbf3C806f00d6608778F21",
+    "builder": "0xCE48CD1033a3bFB6CDd47b830a6649CB2f036dE5",
+    "stranger": "0xBf35583daE5b7a8B7C979DB233c6ef3A8a950887"
+  },
+  "fixture": {
+    "sourceKind": "RELEASE",
+    "url": "https://raw.githubusercontent.com/genlayerlabs/genlayer-js/v1.1.8/package.json",
+    "subjectRef": "github.com/genlayerlabs/genlayer-js",
+    "versionRef": "1.1.8",
+    "criterion": "The official genlayerlabs/genlayer-js repository tag v1.1.8 declares package version 1.1.8."
+  },
+  "transactions": {
+    "funding": [
+      "0xf75536ec801835472d463d50fb874baed717f926ff5eeb5b2b734e453f719977",
+      "0x7edc90f6bdf6938bcd1dc7ff2742b7298934f934b829d604da77635ed4acbaa0",
+      "0x858eb544615fc96180eb0628e8437b5138557e45593bafe6cc9d327e185fef59"
+    ],
+    "createProject": {
+      "hash": "0x670153bb6e1f20c598d3886d7f48017421eb815b42da5e2013efed876495b381",
+      "transactionStatus": "FINALIZED",
+      "executionResult": "FINISHED_WITH_RETURN"
+    },
+    "unauthorizedSubmission": {
+      "hash": "0xe3e40db9b3c7babdb7819c63d7a98d1aa69bcafe602e4383d46d43b941f11bf0",
+      "transactionStatus": "FINALIZED",
+      "executionResult": "FINISHED_WITH_ERROR",
+      "error": "Contract rejected the write"
+    },
+    "submitEvidence": {
+      "hash": "0x85e5603e510b7d6a7812a9a89996d7480844d8e989c05ae4519242142b0bae0b",
+      "transactionStatus": "FINALIZED",
+      "executionResult": "FINISHED_WITH_RETURN"
+    },
+    "resolveSubmission": {
+      "hash": "0x963c6a601c16a7c2b69272ed630989919d76c0281edf281e69aa6a8bcded9b68",
+      "transactionStatus": "FINALIZED",
+      "executionResult": "FINISHED_WITH_RETURN"
+    }
+  },
+  "readback": {
+    "fundingBalances": {
+      "before": [
+        "0",
+        "0",
+        "0"
+      ],
+      "after": [
+        "100",
+        "100",
+        "100"
+      ]
+    },
+    "unauthorizedSubmission": {
+      "project": [
+        1,
+        3,
+        "0x87ccad4e950ea3070afbf3c806f00d6608778f21",
+        "0xce48cd1033a3bfb6cdd47b830a6649cb2f036de5",
+        "SDK GitHub release proof",
+        "Verify a GenLayer SDK version at an immutable official repository tag.",
+        0,
+        0,
+        1787551574,
+        1
+      ],
+      "milestone": [
+        1,
+        3,
+        0,
+        "Verify v1.1.8",
+        [
+          "The official genlayerlabs/genlayer-js repository tag v1.1.8 declares package version 1.1.8."
+        ],
+        [
+          "RELEASE"
+        ],
+        1788156373,
+        1,
+        1787551574,
+        0,
+        0
+      ],
+      "currentSubmissionId": "0"
+    },
+    "projectId": "3",
+    "submissionId": "113829964283052033686027159969438750399359550881208341998731167950457429224851",
+    "project": [
+      1,
+      3,
+      "0x87ccad4e950ea3070afbf3c806f00d6608778f21",
+      "0xce48cd1033a3bfb6cdd47b830a6649cb2f036de5",
+      "SDK GitHub release proof",
+      "Verify a GenLayer SDK version at an immutable official repository tag.",
+      1,
+      0,
+      1787551574,
+      1
+    ],
+    "milestone": [
+      1,
+      3,
+      0,
+      "Verify v1.1.8",
+      [
+        "The official genlayerlabs/genlayer-js repository tag v1.1.8 declares package version 1.1.8."
+      ],
+      [
+        "RELEASE"
+      ],
+      1788156373,
+      3,
+      1787551574,
+      1,
+      "113829964283052033686027159969438750399359550881208341998731167950457429224851"
+    ],
+    "submission": [
+      2,
+      "113829964283052033686027159969438750399359550881208341998731167950457429224851",
+      3,
+      0,
+      1,
+      1,
+      "0xce48cd1033a3bfb6cdd47b830a6649cb2f036de5",
+      1787551658,
+      [
+        [
+          "RELEASE",
+          "https://raw.githubusercontent.com/genlayerlabs/genlayer-js/v1.1.8/package.json",
+          "github.com/genlayerlabs/genlayer-js",
+          "1.1.8",
+          1787551574
+        ]
+      ],
+      "113829964283052033686027159969438750399359550881208341998731167950457429224851",
+      [
+        true
+      ],
+      [],
+      true,
+      true,
+      true,
+      true,
+      "The evidence fetches package.json from the immutable git tag v1.1.8 of genlayerlabs/genlayer-js via raw.githubusercontent.com. The content clearly shows \"version\": \"1.1.8\", satisfying criterion 0. The URL path includes the tag ref v1.1.8, confirming subject_match and version_match. observed_at (1787551574) equals milestone_opened_at and is within the freshness window (submitted_at 1787551658 < effective_freshness_deadline 1788156373). Provenance is credible as raw.githubusercontent.com serves content directly from the tagged commit.",
+      1787551695,
+      1,
+      0,
+      1788156373
+    ]
+  }
+}

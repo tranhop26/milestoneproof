@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-24T05:25:00.000Z",
+  "network": "studionet",
+  "contractAddress": "0xf6A3244459E5ACCA088ab41bFcf1eC00bBD54a49",
+  "actors": {
+    "sponsor": "0xaf925fe11b7101f67c0e57827c57d1ff0ef80b30",
+    "builder": "0x5add8ca16464e52e6cba66a8129612a837c05b4f",
+    "stranger": "0xCF577184dED034Dd2aa1b3568Dfb6d9e25546477"
+  },
+  "transactions": {
+    "createProject": "0x05a74a0253ddbce3534425ced84a43ab55249767de48aaa847a9c5c9cad80f5c",
+    "unauthorizedSubmission": "0x15669b7fbb9d5db1403b7dd7731a11049cee52913f391850edaed6b583eb4b25",
+    "submitEvidence": "0x7a93c97d740152b0b21bc48e31b28f4fcadbdae0fef112d084c5e15769250654",
+    "resolveSubmission": "0x4e0ed2c783f865b3d093fa52233977f9b01e864dbb75f961ade3b1499d068441"
+  },
+  "readback": {
+    "projectId": "1",
+    "projectStatus": "ACTIVE",
+    "milestoneState": "SUBMITTED",
+    "submissionId": "12417050448750338658355321177780103066856195368623747761463575222419869124143",
+    "verdict": "UNRESOLVED",
+    "resolutionCount": 1,
+    "rationale": "Resolution output was unavailable or invalid."
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "network": "studionet",
+  "contractAddress": "0x63f089771e3e4F0c5CEAd5389E213558b26A646c",
+  "deploymentTransactionHash": "0xa407cf32560f975e2e86988eac302c7c7078f8306f28fec3fb5eaa161dabc1e1",
+  "deployerAddress": "0x6cee8637338025A389B06461eDAe6782436B509D",
+  "sourceSha256": "883d66656e9034d566564ca8f56914fc18ad61fba6e814eb682e782caf574a6d",
+  "deployedAt": "2026-08-23T15:51:28.514Z",
+  "classification": "INTENTIONALLY_FROZEN",
+  "explorerUrl": "https://genlayer-explorer.vercel.app/tx/0xa407cf32560f975e2e86988eac302c7c7078f8306f28fec3fb5eaa161dabc1e1",
+  "verification": {
+    "transactionHash": "0xa407cf32560f975e2e86988eac302c7c7078f8306f28fec3fb5eaa161dabc1e1",
+    "transactionStatus": "FINALIZED",
+    "executionResult": "FINISHED_WITH_RETURN",
+    "verifiedAt": "2026-08-23T15:51:28.514Z",
+    "sourceMatches": true,
+    "configReadback": [
+      0,
+      3,
+      3,
+      4,
+      3,
+      259200
+    ]
+  }
+}

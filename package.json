@@ -1,0 +1,19 @@
+{
+  "name": "milestoneproof",
+  "private": true,
+  "packageManager": "pnpm@10.18.2",
+  "scripts": {
+    "build": "pnpm --filter @milestoneproof/shared build && pnpm --filter @milestoneproof/web build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "pnpm lint:genvm && pnpm --filter @milestoneproof/web lint",
+    "lint:genvm": "python -X utf8 -m genvm_linter.cli check packages/contracts/milestoneproof.py",
+    "test": "pnpm -r --sequential test",
+    "test:contract": "python -c \"import os, sys, pytest; os.environ['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'; args = sys.argv[1:] or ['packages/contracts/tests']; raise SystemExit(pytest.main(args))\"",
+    "test:web": "pnpm --filter @milestoneproof/web test",
+    "deploy:contract": "pnpm --filter @milestoneproof/contracts run deploy",
+    "deploy:contract:dry-run": "pnpm --filter @milestoneproof/contracts deploy:dry-run",
+    "verify:contract": "pnpm --filter @milestoneproof/contracts verify --manifest ../../deployments/studionet.json",
+    "e2e:contract:live": "pnpm --filter @milestoneproof/contracts e2e:live",
+    "e2e:live": "pnpm --filter @milestoneproof/web e2e:live"
+  }
+}

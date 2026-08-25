@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-24T04:57:14.000Z",
+  "network": "studionet",
+  "contractAddress": "0x63E6BC2388a9ada6695E0504e4b45fcCf0B82524",
+  "actors": {
+    "sponsor": "0xDE98a28B1E547E2F6D2B7a861d6999Ed5CB65079",
+    "builder": "0xDd2B8ead29C8A3DDb3823E24f7a5b0f37Fb519Db",
+    "stranger": "0xbDe65Ce375e1A5956A5B606474654a1B9607e7DB"
+  },
+  "transactions": {
+    "createProject": {
+      "hash": "0xb69db19c106e0cc36b8c7c6293dd2e02f6081dd4d65b3fb776620127c814f9b3",
+      "transactionStatus": "FINALIZED",
+      "executionResult": "FINISHED_WITH_RETURN"
+    },
+    "unauthorizedSubmission": {
+      "hash": "0x7860f6b423af8990fc88ff9751b49284255b7a17086b75a9495ae8523a736d04",
+      "transactionStatus": "FINALIZED",
+      "executionResult": "FINISHED_WITH_ERROR"
+    },
+    "submitEvidence": {
+      "hash": "0x6bbe80eb2a07ca04decfabe58cb9c58d6dfb2ce4b1cb5775ef1627095ba31337",
+      "transactionStatus": "FINALIZED",
+      "executionResult": "FINISHED_WITH_RETURN"
+    },
+    "resolveSubmission": {
+      "hash": "0x08cea4e3d4a31e01165b571ce86c533070c4239626103da47842ca3aed2775e5",
+      "transactionStatus": "FINALIZED",
+      "executionResult": "FINISHED_WITH_RETURN",
+      "consensusResult": "MAJORITY_AGREE"
+    }
+  },
+  "readback": {
+    "projectId": "1",
+    "projectStatus": "ACTIVE",
+    "milestoneState": "SUBMITTED",
+    "submissionId": "87165704630333420982274827396044244765557780132191470800599240191535072216687",
+    "verdict": "UNRESOLVED",
+    "resolutionCount": 1,
+    "rationale": "Resolution output was unavailable or invalid."
+  }
+}

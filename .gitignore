@@ -2,11 +2,15 @@
 work/
 outputs/
 .worktrees/
+.superpowers/sdd/
+**/artifacts/
 
 # Dependencies and build artifacts
 node_modules/
 dist/
 coverage/
+playwright-report/
+test-results/
 .vite/
 .pytest_cache/
 __pycache__/
@@ -21,6 +25,7 @@ __pycache__/
 .vercel/
 .genlayer/
 deployments/*.local.json
+deployments/*.preview.json
 
 # OS and editor files
 .DS_Store
