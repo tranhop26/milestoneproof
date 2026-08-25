@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-25T14:02:40.075Z",
+  "provider": "vercel",
+  "team": "tdh-s-projects",
+  "project": "milestoneproof",
+  "sourceCommit": "6da88e5c2e662adcb65c3500abad9895d3acd596",
+  "deploymentId": "dpl_DKmF6KHAmkpwtz9tJ16EuQJrnA4M",
+  "deploymentUrl": "https://milestoneproof-8c2m7x0sn-tdh-s-projects.vercel.app",
+  "productionUrl": "https://milestoneproof-zeta.vercel.app",
+  "inspectorUrl": "https://vercel.com/tdh-s-projects/milestoneproof/DKmF6KHAmkpwtz9tJ16EuQJrnA4M",
+  "readyState": "READY",
+  "network": "studionet",
+  "contractAddress": "0xE4081A4E9CD3A6eAc9Ce59f858257E1dee384986",
+  "configReadback": [0, 3, 3, 4, 3, 259200],
+  "productionVerification": {
+    "wallet": "0x21b45103dd05c43969daF3CbB4277391777e2eC7",
+    "importantError": {
+      "message": "Sponsor and builder must be different addresses.",
+      "sponsorProjectCountBefore": "0",
+      "sponsorProjectCountAfter": "0",
+      "signatureRequested": false,
+      "transactionHash": null
+    },
+    "successfulTransactionHash": "0xe3002e66b1d1cb3dab6320e8a4c9f8968191246d65fa40d62db0e6bfef500b91",
+    "transactionExplorerUrl": "https://explorer-studio.genlayer.com/tx/0xe3002e66b1d1cb3dab6320e8a4c9f8968191246d65fa40d62db0e6bfef500b91",
+    "transactionStatus": "FINALIZED",
+    "executionResult": "SUCCESS",
+    "projectId": "17",
+    "projectUrl": "https://milestoneproof-zeta.vercel.app/projects/17",
+    "readback": {
+      "title": "Production UI verification 3",
+      "description": "Production-originated transaction proving the deployed UI writes to the canonical V8 contract.",
+      "sponsor": "0x21b45103dd05c43969daf3cbb4277391777e2ec7",
+      "builder": "0xce48cd1033a3bfb6cdd47b830a6649cb2f036de5",
+      "projectStatus": "ACTIVE",
+      "projectCreatedAt": "1787666200",
+      "milestoneCount": 1,
+      "currentMilestoneIndex": 0,
+      "milestoneTitle": "Confirm production deployment",
+      "criteria": [
+        "The Vercel production alias serves MilestoneProof and reads the canonical V8 contract."
+      ],
+      "allowedSources": ["DEPLOYMENT"],
+      "deadline": "1788417000",
+      "milestoneStatus": "OPEN",
+      "contractAddressRendered": true,
+      "authoritativeReadbackRendered": true
+    }
+  }
+}

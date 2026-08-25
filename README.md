@@ -88,6 +88,8 @@ The deploy script waits for `FINALIZED`, requires successful execution, verifies
 
 Set `VITE_GENLAYER_NETWORK=studionet` and the canonical `VITE_MILESTONEPROOF_ADDRESS` from the verified manifest. Link the intended Vercel team/project and inspect `vercel whoami` without exposing `VERCEL_TOKEN`. After explicit production-deploy approval, deploy from the repository root with Vercel; `vercel.json` builds the monorepo and serves the SPA from `apps/web/dist`.
 
+The verified production deployment is [milestoneproof-zeta.vercel.app](https://milestoneproof-zeta.vercel.app), built by Vercel as deployment `dpl_DKmF6KHAmkpwtz9tJ16EuQJrnA4M` from commit `6da88e5c2e662adcb65c3500abad9895d3acd596`. The deployed UI rejected an identical sponsor/builder before submission, then wallet `0x21b4…2eC7` created project `17` through transaction [`0xe3002e…0b91`](https://explorer-studio.genlayer.com/tx/0xe3002e66b1d1cb3dab6320e8a4c9f8968191246d65fa40d62db0e6bfef500b91). The transaction is `FINALIZED / SUCCESS`; [production project readback](https://milestoneproof-zeta.vercel.app/projects/17) renders the frozen title, actors, `OPEN` milestone, canonical contract, and authoritative-readback state. Exact metadata is in [`deployments/vercel-production.json`](deployments/vercel-production.json).
+
 ## Usage
 
 1. Connect the sponsor wallet on GenLayer Studionet and create a project with frozen criteria and builder.
@@ -98,20 +100,20 @@ Set `VITE_GENLAYER_NETWORK=studionet` and the canonical `VITE_MILESTONEPROOF_ADD
 
 ## Verification evidence
 
-Fresh verification on 2026-08-24 produced:
+Fresh local and production verification on 2026-08-25 produced:
 
 - `pnpm lint`: GenVM validation (16 methods) and ESLint passed;
 - `pnpm typecheck` and `pnpm build`: passed; production UI built from 2,091 modules;
 - `pnpm test`: 210 contract tests plus direct runtime probe, 7 shared tests, and 111 web tests passed;
 - local Playwright: 3 passed, 1 live test correctly skipped without confirmation flags;
-- authorized live Playwright: 1 passed in 2.7 minutes, covering create, unrelated-wallet denial, builder submission, sponsor resolution, terminal suppression, and next-milestone readback;
-- contract live E2E: authorized rejection plus approved happy path are recorded in [`deployments/studionet-live-e2e.json`](deployments/studionet-live-e2e.json).
+- authorized live Playwright recorded on 2026-08-24: 1 passed in 2.7 minutes, covering create, unrelated-wallet denial, builder submission, sponsor resolution, terminal suppression, and next-milestone readback;
+- contract live E2E recorded on 2026-08-24: authorized rejection plus approved happy path are preserved in [`deployments/studionet-live-e2e.json`](deployments/studionet-live-e2e.json).
+- Vercel production smoke: deployment `READY`; project `3` readback rendered `APPROVED`; the identical-party form branch was rejected before submission; a wallet-signed create transaction finalized successfully and production readback rendered project `17` as `ACTIVE` with milestone `OPEN`.
 
 Exact transaction and readback evidence is mapped in [the proof matrix](docs/evidence/proof-matrix.md).
 
 ## Known limitations
 
-- No Vercel production URL or deployed-site transaction has been verified yet.
 - Studio queued one identical V8 deployment before its delayed UI state refreshed; `deployments/studionet-v8-duplicate.json` records it for transparency, but the frontend and canonical manifest use only `0xE408…4986`.
 - Studionet funding in live E2E uses the network simulation method and is explicitly Studionet-only.
 - The contract header pins the tested GenLayer runner; the linter currently reports that a newer runner is available, so upgrades require a fresh compatibility review.
