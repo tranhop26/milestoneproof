@@ -14,4 +14,4 @@ Canonical contract: `0xE4081A4E9CD3A6eAc9Ce59f858257E1dee384986`. Source and rea
 | Local fixture | Render successful lifecycle without a chain transaction | adapter fixture | N/A | Simulated `FINALIZED` / `SUCCESS` | Simulated `READBACK`; one read call | `apps/web/e2e/live.spec.ts` successful receipt test |
 | Local fixture | Reject failed execution before readback | adapter fixture | N/A | Simulated `FINALIZED` / no success | Zero readback calls | `apps/web/e2e/live.spec.ts` failed receipt test |
 
-Repository: `https://github.com/tranhop26/milestoneproof`, deployed source commit `6da88e5c2e662adcb65c3500abad9895d3acd596`. Production: `https://milestoneproof-zeta.vercel.app`.
+Repository: `https://github.com/tranhop26/milestoneproof`, deployed source is merged `main` commit `876d1d0ea987229d7cd8faa41e117dc45a1b6116`. Production: `https://milestoneproof-zeta.vercel.app`.
