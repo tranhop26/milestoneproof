@@ -25,6 +25,26 @@ import {
 import { useWallet } from "../lib/wallet"
 
 const INFO_WINDOW_SECONDS = 72 * 60 * 60
+const READBACK_ATTEMPTS = 10
+const READBACK_RETRY_DELAY_MS = 500
+
+class AuthoritativeMismatchError extends Error {}
+
+async function reconcileAuthoritativeReadback<T>(read: () => Promise<T>): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= READBACK_ATTEMPTS; attempt += 1) {
+    try {
+      return await read()
+    } catch (error) {
+      if (error instanceof AuthoritativeMismatchError) throw error
+      lastError = error
+      if (attempt < READBACK_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, READBACK_RETRY_DELAY_MS))
+      }
+    }
+  }
+  throw lastError
+}
 
 export const queryKeys = {
   config: () => ["milestoneProof", "config"] as const,
@@ -168,7 +188,7 @@ export function useCreateProject(contract: MilestoneProofContract | null) {
         },
         submit: () => contract.writes.createProject(input, createClientNonce("project")),
         waitForFinalized: contract.writes.waitForFinalized,
-        readback: async () => {
+        readback: () => reconcileAuthoritativeReadback(async () => {
           if (!sponsor) throw new Error("The sponsor wallet disconnected before readback.")
           const projectIds = await contract.reads.actorProjects(sponsor, "sponsor")
           const newestProjectId = projectIds[0]
@@ -178,10 +198,10 @@ export function useCreateProject(contract: MilestoneProofContract | null) {
             throw new Error("The newest sponsor project does not match the submitted project.")
           }
           if (!await frozenMilestonesMatch(contract, project.id, input)) {
-            throw new Error("The frozen milestone readback does not match the submitted project.")
+            throw new AuthoritativeMismatchError("The frozen milestone readback does not match the submitted project.")
           }
           return project
-        },
+        }),
       }, setTransactionState)
 
       await Promise.all([

@@ -20,14 +20,14 @@ import {
 
 const FIXTURE = {
   sourceKind: "RELEASE",
-  url: "https://www.npmjs.com/package/genlayer-js/v/1.1.8",
-  subjectRef: "npmjs.com/package/genlayer-js",
+  url: "https://raw.githubusercontent.com/genlayerlabs/genlayer-js/v1.1.8/package.json",
+  subjectRef: "github.com/genlayerlabs/genlayer-js",
   versionRef: "1.1.8",
-  criterion: "The public npm registry lists genlayer-js version 1.1.8.",
+  criterion: "The official genlayerlabs/genlayer-js repository tag v1.1.8 declares package version 1.1.8.",
 }
 
-const PROJECT_TITLE = "SDK npm release proof"
-const PROJECT_DESCRIPTION = "Verify a public GenLayer SDK package release through semantic consensus."
+const PROJECT_TITLE = "SDK GitHub release proof"
+const PROJECT_DESCRIPTION = "Verify a GenLayer SDK version at an immutable official repository tag."
 const STUDIONET_FUNDING_METHOD = "sim_fundAccount"
 const STUDIONET_FUNDING_AMOUNT = 100
 

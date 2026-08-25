@@ -11,6 +11,7 @@ import {
 import type { EvidenceInput } from "@milestoneproof/shared"
 
 const CONTRACT = "0xc000000000000000000000000000000000000001" as const
+const CHECKSUM_CONTRACT = "0xE4081A4E9CD3A6eAc9Ce59f858257E1dee384986" as const
 const SPONSOR = "0x1000000000000000000000000000000000000001" as const
 const BUILDER = "0x2000000000000000000000000000000000000002" as const
 const TX_HASH = `0x${"a".repeat(64)}` as `0x${string}`
@@ -64,6 +65,42 @@ function client(readResult: unknown = projectShape): ContractClient {
 }
 
 describe("MilestoneProof contract adapter", () => {
+  it("preserves the deployed contract checksum because Studionet contract lookup is case-sensitive", async () => {
+    const read = client()
+    const contract = createMilestoneProofContract({ address: CHECKSUM_CONTRACT, readClient: read })
+
+    await contract.reads.project("42")
+    expect(contract.address).toBe(CHECKSUM_CONTRACT)
+    expect(read.readContract).toHaveBeenCalledWith(expect.objectContaining({ address: CHECKSUM_CONTRACT }))
+  })
+
+  it("recognizes the current Studionet majority-agree leader success receipt", async () => {
+    const read = client()
+    vi.mocked(read.waitForTransactionReceipt).mockResolvedValueOnce({
+      statusName: "FINALIZED",
+      resultName: "MAJORITY_AGREE",
+      consensus_data: {
+        leader_receipt: [{ execution_result: "SUCCESS", result: { status: "return" } }],
+      },
+    })
+    const contract = createMilestoneProofContract({ address: CONTRACT, readClient: read })
+
+    await expect(contract.writes.waitForFinalized(TX_HASH)).resolves.toEqual({ executionSucceeded: true })
+  })
+
+  it("keeps polling beyond the SDK's thirty-second default finalization window", async () => {
+    const read = client()
+    vi.mocked(read.waitForTransactionReceipt).mockImplementationOnce(async (args) => {
+      if (((args as { retries?: number }).retries ?? 0) <= 10) {
+        throw new Error("The client stopped while the Studionet transaction was still pending.")
+      }
+      return { statusName: "FINALIZED", txExecutionResultName: "FINISHED_WITH_RETURN" }
+    })
+    const contract = createMilestoneProofContract({ address: CONTRACT, readClient: read })
+
+    await expect(contract.writes.waitForFinalized(TX_HASH)).resolves.toEqual({ executionSucceeded: true })
+  })
+
   it("uses the exact project read method and positional argument order", async () => {
     const read = client()
     const contract = createMilestoneProofContract({ address: CONTRACT, readClient: read })
@@ -289,6 +326,7 @@ describe("MilestoneProof contract adapter", () => {
 
   it("uses the canonical VITE_MILESTONEPROOF_ADDRESS runtime key only", () => {
     expect(getConfiguredContractAddress({ VITE_MILESTONEPROOF_ADDRESS: CONTRACT })).toBe(CONTRACT)
+    expect(getConfiguredContractAddress({ VITE_MILESTONEPROOF_ADDRESS: CHECKSUM_CONTRACT })).toBe(CHECKSUM_CONTRACT)
     expect(() => getConfiguredContractAddress({
       VITE_MILESTONEPROOF_CONTRACT_ADDRESS: CONTRACT,
     })).toThrow("VITE_MILESTONEPROOF_ADDRESS is not configured")

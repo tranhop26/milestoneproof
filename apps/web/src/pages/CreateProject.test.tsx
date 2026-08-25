@@ -187,6 +187,26 @@ describe("CreateProject", () => {
     expect(await screen.findByText("Project readback route")).toBeInTheDocument()
   })
 
+  it("reconciles a transient sponsor-index read failure before reporting project success", async () => {
+    const gate = deferred<void>()
+    gate.resolve()
+    const contract = fakeContract(gate)
+    vi.mocked(contract.reads.actorProjects)
+      .mockRejectedValueOnce(new Error("Studionet state is not indexed yet."))
+      .mockRejectedValueOnce(new Error("Studionet state is not indexed yet."))
+      .mockRejectedValueOnce(new Error("Studionet state is not indexed yet."))
+      .mockRejectedValueOnce(new Error("Studionet state is not indexed yet."))
+      .mockRejectedValueOnce(new Error("Studionet state is not indexed yet."))
+      .mockResolvedValueOnce(["42"])
+    renderCreate(contract, connectedProvider())
+    await screen.findByRole("heading", { name: "Create a frozen project" })
+    const user = await completeRequiredFields()
+
+    await user.click(screen.getByRole("button", { name: "Create project on-chain" }))
+
+    expect(await screen.findByText("Project readback route", {}, { timeout: 4_000 })).toBeInTheDocument()
+  }, 10_000)
+
   it("rejects a builder equal to the connected sponsor before submitting calldata", async () => {
     const gate = deferred<void>()
     const contract = fakeContract(gate)
@@ -210,8 +230,9 @@ describe("CreateProject", () => {
 
     await user.click(screen.getByRole("button", { name: "Create project on-chain" }))
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("authoritative readback could not be confirmed")
+    expect(await screen.findByRole("alert", {}, { timeout: 4_000 })).toHaveTextContent("authoritative readback could not be confirmed")
     expect(contract.reads.milestone).toHaveBeenCalledWith("42", 0)
+    expect(contract.reads.milestone).toHaveBeenCalledTimes(1)
     expect(screen.queryByText("Project readback route")).not.toBeInTheDocument()
-  })
+  }, 10_000)
 })

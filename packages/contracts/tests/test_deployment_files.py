@@ -173,8 +173,8 @@ export const createClient = ({ account } = {}) => {
       if (functionName === "get_project_count") return 999n;
       if (functionName === "get_sponsor_project_count") return 1n;
       if (functionName === "get_sponsor_project_ids") return [7n];
-      if (functionName === "get_project") return [1n, 7n, addresses[0], process.env.FAKE_PROJECT_BUILDER || addresses[1], process.env.FAKE_PROJECT_TITLE || "SDK npm release proof", "Verify a public GenLayer SDK package release through semantic consensus.", stage === 3 ? 1n : 0n, 0n, 1800000000n, 1n];
-      if (functionName === "get_milestone") return [1n, 7n, 0n, process.env.FAKE_MILESTONE_TITLE || "Verify v1.1.8", ["The public npm registry lists genlayer-js version 1.1.8."], ["RELEASE"], 1900000000n, stage === 3 ? 3n : (stage === 2 ? 2n : 1n), 1800000000n, stage >= 2 ? 1n : 0n, stage >= 2 ? 9n : 0n];
+      if (functionName === "get_project") return [1n, 7n, addresses[0], process.env.FAKE_PROJECT_BUILDER || addresses[1], process.env.FAKE_PROJECT_TITLE || "SDK GitHub release proof", "Verify a GenLayer SDK version at an immutable official repository tag.", stage === 3 ? 1n : 0n, 0n, 1800000000n, 1n];
+      if (functionName === "get_milestone") return [1n, 7n, 0n, process.env.FAKE_MILESTONE_TITLE || "Verify v1.1.8", ["The official genlayerlabs/genlayer-js repository tag v1.1.8 declares package version 1.1.8."], ["RELEASE"], 1900000000n, stage === 3 ? 3n : (stage === 2 ? 2n : 1n), 1800000000n, stage >= 2 ? 1n : 0n, stage >= 2 ? 9n : 0n];
       if (functionName === "get_submission") return [2n, 9n, 7n, 0n, 1n, stage === 3 ? 1n : 0n, addresses[1], 1800000010n, [], 9n, [true], [], true, true, true, true, "Approved", 1800000020n, 1n, 0n, 1900000000n];
       throw new Error("unexpected read");
     },
@@ -699,6 +699,16 @@ def test_live_e2e_generates_actors_proves_success_and_unauthorized_error(tmp_pat
     evidence = json.loads(evidence_text)
     assert evidence["network"] == "studionet"
     assert evidence["contractAddress"] == CONTRACT_ADDRESS
+    assert evidence["fixture"] == {
+        "sourceKind": "RELEASE",
+        "url": "https://raw.githubusercontent.com/genlayerlabs/genlayer-js/v1.1.8/package.json",
+        "subjectRef": "github.com/genlayerlabs/genlayer-js",
+        "versionRef": "1.1.8",
+        "criterion": (
+            "The official genlayerlabs/genlayer-js repository tag v1.1.8 "
+            "declares package version 1.1.8."
+        ),
+    }
     assert len(set(evidence["actors"].values())) == 3
     assert evidence["transactions"]["createProject"]["executionResult"] == "FINISHED_WITH_RETURN"
     assert evidence["transactions"]["unauthorizedSubmission"]["executionResult"] == "FINISHED_WITH_ERROR"

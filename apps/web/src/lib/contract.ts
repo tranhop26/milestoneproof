@@ -38,10 +38,23 @@ interface ContractWrite extends ContractCall {
 export interface ContractClient {
   readContract(args: ContractCall): Promise<unknown>
   writeContract(args: ContractWrite): Promise<unknown>
-  waitForTransactionReceipt(args: { hash: TransactionHash, status: "FINALIZED" }): Promise<{
+  waitForTransactionReceipt(args: {
+    hash: TransactionHash
+    status: "FINALIZED"
+    interval?: number
+    retries?: number
+  }): Promise<{
     statusName?: string
     txExecutionResultName?: string
-    consensus_data?: { leader_receipt?: Array<{ error?: string | null }> }
+    resultName?: string
+    result_name?: string
+    consensus_data?: {
+      leader_receipt?: Array<{
+        error?: string | null
+        execution_result?: string
+        result?: { status?: string }
+      }>
+    }
   }>
 }
 
@@ -100,6 +113,11 @@ function address(value: string, field: string, allowZero = false): ContractAddre
     throw new ContractInputError(`${field} cannot be the zero address`)
   }
   return normalized
+}
+
+function deployedContractAddress(value: string): ContractAddress {
+  address(value, "contract")
+  return value as ContractAddress
 }
 
 function positiveId(value: string, field: string): bigint {
@@ -218,6 +236,17 @@ function receiptError(receipt: Awaited<ReturnType<ContractClient["waitForTransac
   return receipt.consensus_data?.leader_receipt?.find(({ error }) => Boolean(error))?.error ?? undefined
 }
 
+function receiptExecutionSucceeded(
+  receipt: Awaited<ReturnType<ContractClient["waitForTransactionReceipt"]>>,
+): boolean {
+  if (receipt.txExecutionResultName === "FINISHED_WITH_RETURN") return true
+  const resultName = receipt.resultName ?? receipt.result_name
+  const leader = receipt.consensus_data?.leader_receipt?.find(({ execution_result }) => execution_result === "SUCCESS")
+  return resultName === "MAJORITY_AGREE"
+    && leader?.execution_result === "SUCCESS"
+    && leader.result?.status === "return"
+}
+
 export function createClientNonce(
   domain: string,
   randomUUID: () => string = () => globalThis.crypto.randomUUID(),
@@ -236,7 +265,7 @@ export function getConfiguredContractAddress(
   if (typeof configured !== "string" || !configured) {
     throw new ContractInputError("VITE_MILESTONEPROOF_ADDRESS is not configured")
   }
-  return address(configured, "configured contract")
+  return deployedContractAddress(configured)
 }
 
 export function createMilestoneProofContract({
@@ -245,7 +274,7 @@ export function createMilestoneProofContract({
   getWriteClient,
   now = () => Date.now() / 1_000,
 }: MilestoneProofContractOptions): MilestoneProofContract {
-  const contractAddress = address(rawAddress, "contract")
+  const contractAddress = deployedContractAddress(rawAddress)
 
   const read = async (functionName: string, args: CalldataValue[] = []) => readClient.readContract({
     address: contractAddress,
@@ -334,8 +363,13 @@ export function createMilestoneProofContract({
         milestoneIndex(index),
       ]),
       waitForFinalized: async (hash) => {
-        const receipt = await readClient.waitForTransactionReceipt({ hash, status: "FINALIZED" })
-        return receipt.txExecutionResultName === "FINISHED_WITH_RETURN"
+        const receipt = await readClient.waitForTransactionReceipt({
+          hash,
+          status: "FINALIZED",
+          interval: 3_000,
+          retries: 200,
+        })
+        return receiptExecutionSucceeded(receipt)
           ? { executionSucceeded: true }
           : {
               executionSucceeded: false,

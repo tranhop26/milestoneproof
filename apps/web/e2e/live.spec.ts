@@ -4,14 +4,15 @@ import { studionet } from "genlayer-js/chains"
 import { env } from "node:process"
 
 const FIXTURE = {
-  sourceKind: "REPOSITORY",
-  url: "https://github.com/genlayerlabs/genlayer-js/commit/573e6bbc9c3aa7d3e40c37505d0a83a1ab1182c1",
+  sourceKind: "RELEASE",
+  url: "https://raw.githubusercontent.com/genlayerlabs/genlayer-js/v1.1.8/package.json",
   subjectRef: "github.com/genlayerlabs/genlayer-js",
-  versionRef: "573e6bbc9c3aa7d3e40c37505d0a83a1ab1182c1",
-  criterion: "The public genlayerlabs/genlayer-js repository contains commit 573e6bbc9c3aa7d3e40c37505d0a83a1ab1182c1 for release v1.1.8.",
+  versionRef: "1.1.8",
+  criterion: "The official genlayerlabs/genlayer-js repository tag v1.1.8 declares package version 1.1.8.",
 } as const
 
 const LIVE_PHASES = ["AWAITING_SIGNATURE", "PENDING", "FINALIZED", "SUCCESS", "READBACK"] as const
+const LIVE_EXPECT_TIMEOUT = 14 * 60 * 1_000
 
 function generatedActor() {
   const privateKey = generatePrivateKey()
@@ -33,10 +34,12 @@ async function startPhaseCapture(page: Page, captureCurrent = true) {
   await page.evaluate((shouldCaptureCurrent) => {
     const runtime = window as Window & { __MILESTONEPROOF_E2E_PHASES__?: string[] }
     runtime.__MILESTONEPROOF_E2E_PHASES__ = []
+    const lifecyclePhases = new Set(["AWAITING_SIGNATURE", "PENDING", "FINALIZED", "SUCCESS", "READBACK"])
     const capture = () => {
       document.querySelectorAll<HTMLElement>("[data-transaction-phase]").forEach((panel) => {
         const phase = panel.dataset.transactionPhase
-        if (phase && runtime.__MILESTONEPROOF_E2E_PHASES__?.at(-1) !== phase) {
+        if (phase && lifecyclePhases.has(phase)
+          && runtime.__MILESTONEPROOF_E2E_PHASES__?.at(-1) !== phase) {
           runtime.__MILESTONEPROOF_E2E_PHASES__?.push(phase)
         }
       })
@@ -51,11 +54,11 @@ async function startPhaseCapture(page: Page, captureCurrent = true) {
   }, captureCurrent)
 }
 
-async function expectHappyPhases(page: Page) {
+async function expectHappyPhases(page: Page, timeout = 30_000) {
   await expect.poll(async () => page.evaluate(() => (
     (window as Window & { __MILESTONEPROOF_E2E_PHASES__?: string[] })
       .__MILESTONEPROOF_E2E_PHASES__ ?? []
-  ))).toEqual([...LIVE_PHASES])
+  )), { timeout }).toEqual([...LIVE_PHASES])
 }
 
 test("a FINISHED_WITH_ERROR receipt never reaches success or readback", async ({ page }) => {
@@ -141,6 +144,7 @@ test.describe("@live contract lifecycle", () => {
   test.skip(env.CONFIRM_LIVE_E2E !== "YES", "CONFIRM_LIVE_E2E=YES is required after action-time confirmation")
 
   test("creates, submits, resolves, and reads back a milestone", async ({ page }) => {
+    test.setTimeout(40 * 60 * 1_000)
     const sponsor = generatedActor()
     const builder = generatedActor()
     const stranger = generatedActor()
@@ -168,16 +172,17 @@ test.describe("@live contract lifecycle", () => {
     await page.getByLabel("Project description").fill("A live browser lifecycle that proves contract-authoritative milestone acceptance.")
     await page.getByLabel("Milestone 1 title").fill("Verify GenLayer SDK v1.1.8")
     await page.getByLabel("Milestone 1 acceptance criteria").fill(FIXTURE.criterion)
+    await page.getByLabel("Milestone 1 allowed evidence").selectOption(FIXTURE.sourceKind)
     await page.getByLabel("Milestone 1 deadline").fill(deadline)
     await page.getByRole("button", { name: "Add milestone" }).click()
     await page.getByLabel("Milestone 2 title").fill("Publish follow-up verification")
     await page.getByLabel("Milestone 2 acceptance criteria").fill("A second evidence revision documents the verified release.")
     await page.getByLabel("Milestone 2 deadline").fill(deadline)
 
-    await startPhaseCapture(page)
+    await startPhaseCapture(page, false)
     await page.getByRole("button", { name: "Create project on-chain" }).click()
-    await expect(page).toHaveURL(/\/projects\/\d+$/)
-    await expectHappyPhases(page)
+    await expect(page).toHaveURL(/\/projects\/\d+$/, { timeout: LIVE_EXPECT_TIMEOUT })
+    await expectHappyPhases(page, LIVE_EXPECT_TIMEOUT)
     const projectUrl = page.url()
 
     await selectActor(page, stranger.privateKey, stranger.account.address)
@@ -192,16 +197,16 @@ test.describe("@live contract lifecycle", () => {
     await page.getByLabel("Evidence 1 subject").fill(FIXTURE.subjectRef)
     await page.getByLabel("Evidence 1 version").fill(FIXTURE.versionRef)
     await page.getByLabel("Evidence 1 observed at").fill(new Date().toISOString().slice(0, 16))
-    await startPhaseCapture(page)
+    await startPhaseCapture(page, false)
     await page.getByRole("button", { name: "Submit evidence" }).click()
-    await expectHappyPhases(page)
+    await expectHappyPhases(page, LIVE_EXPECT_TIMEOUT)
 
     await page.getByRole("tab", { name: "Submissions" }).click()
     await page.getByRole("link", { name: /Submission #/ }).click()
     await selectActor(page, sponsor.privateKey, sponsor.account.address)
-    await startPhaseCapture(page)
+    await startPhaseCapture(page, false)
     await page.getByRole("button", { name: "Resolve submission" }).click()
-    await expectHappyPhases(page)
+    await expectHappyPhases(page, LIVE_EXPECT_TIMEOUT)
     await expect(page.getByText("This submission is terminal; repeat actions are suppressed.")).toBeVisible()
 
     await page.goto(projectUrl)

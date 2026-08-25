@@ -1,14 +1,15 @@
 # Verification proof matrix
 
-Live fields remain `PENDING` until an authorized Studionet deployment and deployed-site run produce independently checkable values. Local fixtures do not receive invented transaction hashes.
+Canonical contract: `0xE4081A4E9CD3A6eAc9Ce59f858257E1dee384986`. Source and readbacks are fixed in `deployments/studionet.json` and `deployments/studionet-live-e2e.json`; local fixtures do not receive invented transaction hashes.
 
 | Actor | Action | Contract method | Transaction hash | FINALIZED/SUCCESS | Readback | Source/test |
 |---|---|---|---|---|---|---|
-| Sponsor | Create project with frozen builder and milestones | `create_project` | `PENDING` | `PENDING` | `PENDING` project ID and frozen fields | Live browser E2E after deployment |
-| Builder | Submit repository evidence | `submit_evidence` | `PENDING` | `PENDING` | `PENDING` submission ID, digest, and `SUBMITTED` milestone | Live browser E2E after deployment |
-| Sponsor or builder | Resolve sufficient evidence | `resolve_submission` | `PENDING` | `PENDING` | `PENDING` `APPROVED` and next milestone `OPEN` | Live browser E2E after deployment |
-| Unauthorized wallet | Attempt builder-only evidence submission | `submit_evidence` | `PENDING` | `PENDING` expected `FINISHED_WITH_ERROR` | `PENDING` immediate contract readback: project `ACTIVE`, milestone `OPEN`, submission count/current ID zero | `packages/contracts/scripts/e2e.mjs` live contract E2E after deployment |
+| Sponsor | Create project with frozen builder and milestone | `create_project` | `0x670153bb6e1f20c598d3886d7f48017421eb815b42da5e2013efed876495b381` | `FINALIZED / FINISHED_WITH_RETURN` | Project `3`, frozen actor/criterion/source, milestone `OPEN` | `deployments/studionet-live-e2e.json` |
+| Unauthorized wallet | Attempt builder-only evidence submission | `submit_evidence` | `0xe3e40db9b3c7babdb7819c63d7a98d1aa69bcafe602e4383d46d43b941f11bf0` | `FINALIZED / FINISHED_WITH_ERROR` | Project remains `ACTIVE`; milestone remains `OPEN`; current submission ID `0` | `deployments/studionet-live-e2e.json` |
+| Builder | Submit release evidence | `submit_evidence` | `0x85e5603e510b7d6a7812a9a89996d7480844d8e989c05ae4519242142b0bae0b` | `FINALIZED / FINISHED_WITH_RETURN` | Submission digest recorded; milestone `SUBMITTED` | `deployments/studionet-live-e2e.json` |
+| Sponsor | Resolve sufficient evidence | `resolve_submission` | `0x963c6a601c16a7c2b69272ed630989919d76c0281edf281e69aa6a8bcded9b68` | `FINALIZED / FINISHED_WITH_RETURN` | Verdict `APPROVED`; milestone and project `COMPLETED`; all integrity flags true | `deployments/studionet-live-e2e.json` |
+| Browser actors | Create, deny unrelated wallet, submit, resolve, then reload | Same methods above | Fresh hashes rendered and linked by the UI | All promoted writes reached `FINALIZED`, `SUCCESS`, then `READBACK` | Second milestone displayed `OPEN` after reload | `apps/web/e2e/live.spec.ts`; authorized run: 1 passed in 2.7m |
 | Local fixture | Render successful lifecycle without a chain transaction | adapter fixture | N/A | Simulated `FINALIZED` / `SUCCESS` | Simulated `READBACK`; one read call | `apps/web/e2e/live.spec.ts` successful receipt test |
 | Local fixture | Reject failed execution before readback | adapter fixture | N/A | Simulated `FINALIZED` / no success | Zero readback calls | `apps/web/e2e/live.spec.ts` failed receipt test |
 
-Final evidence must also record repository URL, exact commit, Vercel URL, contract address, deployment transaction, explorer links, source SHA-256, command totals, browser viewport checks, console results, and remaining limitations.
+Repository commit and Vercel URL remain intentionally unset until the required account/team confirmation and external actions occur.

@@ -36,7 +36,7 @@ Every frontend write renders `AWAITING_SIGNATURE` → `PENDING` → `FINALIZED` 
 
 ## Setup
 
-Requirements: Node.js 20+, pnpm 10.18.2, Python 3.12+, `uvx` for the GenVM linter, and an installed Google Chrome browser for local Playwright tests. The Playwright configuration uses the system `chrome` channel; it does not require bundled Chromium.
+Requirements: Node.js 20+, pnpm 10.18.2, Python 3.12+ with `genvm-linter`, and an installed Google Chrome browser for local Playwright tests. The Playwright configuration uses the system `chrome` channel; it does not require bundled Chromium.
 
 ```sh
 cp .env.example .env
@@ -71,7 +71,7 @@ pnpm build                # shared package and production web build
 pnpm test                 # direct contract, shared, and web tests
 pnpm --filter @milestoneproof/web e2e  # reproducible local Playwright suite
 pnpm deploy:contract:dry-run
-pnpm verify:contract -- --manifest deployments/studionet.json
+pnpm verify:contract
 pnpm e2e:contract:live -- --manifest deployments/studionet.json
 pnpm e2e:live             # state-changing deployed-browser flow; confirmation-gated
 ```
@@ -80,7 +80,9 @@ pnpm e2e:live             # state-changing deployed-browser flow; confirmation-g
 
 Deployment is intentionally gated. First set `GENLAYER_NETWORK` and `DEPLOYER_PRIVATE_KEY`, then run `pnpm deploy:contract:dry-run`. Confirm the printed network, derived deployer, source SHA-256, candidate commit, and manifest path. Only after explicit approval, set `CONFIRM_DEPLOY=YES` and run `pnpm deploy:contract`.
 
-The script waits for `FINALIZED`, requires `FINISHED_WITH_RETURN`, verifies the transaction sender, reads `get_config`, compares deployed source, and writes an immutable schema-checked manifest. It refuses to overwrite an existing manifest. Studionet support and tests are simulated until the live deployment/readback gate is completed.
+The canonical frozen deployment is `0xE4081A4E9CD3A6eAc9Ce59f858257E1dee384986`; deployment transaction [`0x06070a…7421`](https://genlayer-explorer.vercel.app/tx/0x06070af739d7bc61b60c6e43ae71b6b301582207c18f86ebcf971579d23d7421) is `FINALIZED / FINISHED_WITH_RETURN`. The verified source SHA-256 is `2cded3b2849cbf7808ea91205520a24537895f66e68dc0a5e625e52ff99b510a`; authoritative `get_config` readback is `[0,3,3,4,3,259200]`. See [`deployments/studionet.json`](deployments/studionet.json).
+
+The deploy script waits for `FINALIZED`, requires successful execution, verifies the sender, reads `get_config`, compares source, and writes a schema-checked manifest. It refuses to overwrite an existing manifest.
 
 ## Frontend deployment
 
@@ -96,19 +98,21 @@ Set `VITE_GENLAYER_NETWORK=studionet` and the canonical `VITE_MILESTONEPROOF_ADD
 
 ## Verification evidence
 
-Local direct, parser, UI, deployment-gate, and browser-to-contract fixture tests are implemented. Manual local browser QA observed:
+Fresh verification on 2026-08-24 produced:
 
-- desktop 1440×900: landing and sidebar rendered cleanly;
-- mobile 390×844: navigation sheet focus, Escape close, focus restore, and no horizontal overflow;
-- missing-wallet branch: visible accessible alert;
-- console: no errors; two React Router future-flag warnings only.
+- `pnpm lint`: GenVM validation (16 methods) and ESLint passed;
+- `pnpm typecheck` and `pnpm build`: passed; production UI built from 2,091 modules;
+- `pnpm test`: 210 contract tests plus direct runtime probe, 7 shared tests, and 111 web tests passed;
+- local Playwright: 3 passed, 1 live test correctly skipped without confirmation flags;
+- authorized live Playwright: 1 passed in 2.7 minutes, covering create, unrelated-wallet denial, builder submission, sponsor resolution, terminal suppression, and next-milestone readback;
+- contract live E2E: authorized rejection plus approved happy path are recorded in [`deployments/studionet-live-e2e.json`](deployments/studionet-live-e2e.json).
 
-These are local results, not proof of a Studionet deployment. Exact transaction and readback evidence belongs in [the proof matrix](docs/evidence/proof-matrix.md) after authorized live execution.
+Exact transaction and readback evidence is mapped in [the proof matrix](docs/evidence/proof-matrix.md).
 
 ## Known limitations
 
-- No live Studionet contract address, deployment transaction, explorer link, or verified readback has been recorded yet.
 - No Vercel production URL or deployed-site transaction has been verified yet.
+- Studio queued one identical V8 deployment before its delayed UI state refreshed; `deployments/studionet-v8-duplicate.json` records it for transparency, but the frontend and canonical manifest use only `0xE408…4986`.
 - Studionet funding in live E2E uses the network simulation method and is explicitly Studionet-only.
 - The contract header pins the tested GenLayer runner; the linter currently reports that a newer runner is available, so upgrades require a fresh compatibility review.
 - A frozen-contract defect requires successor deployment and manual recreation of unfinished projects; see [the recovery runbook](docs/recovery.md).
