@@ -60,7 +60,7 @@ The deployment script verified the finalized transaction, execution result, depl
 
 ## Verification status
 
-The release candidate passed GenVM and web lint, all workspace typechecks, and a production build of 2,092 modules. Direct tests passed: 212 contract plus the runtime probe, 7 shared, and 120 web (339 tests total). Local Playwright passed 4 read-only/fixture tests with the 1 state-changing live test correctly skipped. `pnpm verify:contract` freshly reconfirmed the finalized successful deployment, source SHA-256, and `[0,3,3,4,3,259200]` configuration readback. The state-changing live suites were not rerun for this frontend-only release because existing contract evidence is preserved and no contract code changed.
+The release candidate passed GenVM and web lint, all workspace typechecks, and a production build of 2,092 modules. Direct tests passed: 212 contract plus the runtime probe, 7 shared, and 122 web (341 tests total). Local Playwright passed 4 read-only/fixture tests with the 1 state-changing live test correctly skipped. `pnpm verify:contract` freshly reconfirmed the finalized successful deployment, source SHA-256, and `[0,3,3,4,3,259200]` configuration readback. The state-changing live suites were not rerun for this frontend-only release because existing contract evidence is preserved and no contract code changed.
 
 ## Known limitations
 

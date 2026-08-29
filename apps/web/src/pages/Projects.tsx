@@ -90,7 +90,15 @@ export function Projects({ contract: contractOverride }: { contract?: MilestoneP
             <span>{visibleProjects.length} {visibleProjects.length === 1 ? "project" : "projects"}</span>
           </div>
 
-          <div className="projects-grid">
+          {visibleProjects.length === 0 ? (
+            <div className="projects-state projects-empty projects-filter-empty">
+              <FolderKanban aria-hidden="true" size={24} />
+              <div>
+                <h2>No {filter === "all" ? "matching" : roleLabel(filter)} projects</h2>
+                <p>This wallet has indexed projects, but none match the {filter === "all" ? "selected" : roleLabel(filter)} filter.</p>
+              </div>
+            </div>
+          ) : <div className="projects-grid">
             {visibleProjects.map(({ project, roles }) => (
               <article className="project-card" key={project.id}>
                 <header>
@@ -114,7 +122,7 @@ export function Projects({ contract: contractOverride }: { contract?: MilestoneP
                 </Link>
               </article>
             ))}
-          </div>
+          </div>}
         </>
       )}
     </section>

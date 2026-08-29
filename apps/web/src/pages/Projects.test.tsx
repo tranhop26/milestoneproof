@@ -120,6 +120,21 @@ describe("Projects", () => {
     expect(screen.getByText(/contract returned no sponsor or builder projects/i)).toBeInTheDocument()
   })
 
+  it("distinguishes an empty role filter from an empty contract index", async () => {
+    const adapter = contract()
+    vi.mocked(adapter.reads.actorProjects).mockImplementation(async (_actor, role) => (
+      role === "sponsor" ? ["5"] : []
+    ))
+    renderProjects(adapter, provider(ACTOR))
+    await screen.findByRole("heading", { name: "Sponsor project" })
+
+    await userEvent.click(screen.getByRole("button", { name: "Builder" }))
+
+    expect(screen.getByRole("heading", { name: "No Builder projects" })).toBeInTheDocument()
+    expect(screen.getByText(/wallet has indexed projects, but none match the Builder filter/i)).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "No indexed projects" })).not.toBeInTheDocument()
+  })
+
   it("fails closed when an authoritative index read fails", async () => {
     const adapter = contract()
     vi.mocked(adapter.reads.actorProjects).mockRejectedValue(new Error("RPC unavailable"))

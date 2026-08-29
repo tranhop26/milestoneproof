@@ -108,7 +108,7 @@ Fresh local verification of the 2026-08-29 Explorer-polish candidate produced:
 - `pnpm lint`: GenVM validation passed for 16 contract methods and ESLint passed with zero warnings;
 - `pnpm typecheck`: all shared, web, and browser-test TypeScript checks passed;
 - `pnpm build`: production UI built successfully from 2,092 modules;
-- `pnpm test`: 212 contract tests plus the direct runtime probe, 7 shared tests, and 120 web tests passed (339 tests total);
+- `pnpm test`: 212 contract tests plus the direct runtime probe, 7 shared tests, and 122 web tests passed (341 tests total);
 - local Playwright: 4 read-only/fixture tests passed and 1 state-changing live test was correctly skipped without confirmation flags;
 - `pnpm verify:contract`: the canonical transaction remained `FINALIZED / FINISHED_WITH_RETURN`, source SHA-256 matched, and `get_config` readback was `[0,3,3,4,3,259200]`.
 
