@@ -32,3 +32,4 @@ deployments/*.preview.json
 Thumbs.db
 .idea/
 .vscode/
+.vercel

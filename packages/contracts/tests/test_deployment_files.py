@@ -884,7 +884,32 @@ def test_explorer_submission_contains_canonical_evidence_and_limitations():
         "https://milestoneproof-zeta.vercel.app",
         "INTENTIONALLY_FROZEN",
         "run_nondet_unsafe",
-        "PENDING FINAL RELEASE COMMIT",
+        "ebbacc16146adaa0ae31c978f7e5b52fd229bdc2",
+        "dpl_CaUtyRonFMatpw5oa7ut93xKwo8m",
     ]
     for value in required:
         assert value in text
+
+
+def test_vercel_release_manifest_matches_fixed_explorer_evidence():
+    manifest = json.loads(
+        (ROOT / "deployments" / "vercel-production.json").read_text(encoding="utf-8")
+    )
+    assert manifest["sourceCommit"] == "ebbacc16146adaa0ae31c978f7e5b52fd229bdc2"
+    assert manifest["deploymentId"] == "dpl_CaUtyRonFMatpw5oa7ut93xKwo8m"
+    assert manifest["readyState"] == "READY"
+    assert manifest["network"] == "studionet"
+    assert manifest["contractAddress"] == (
+        "0xE4081A4E9CD3A6eAc9Ce59f858257E1dee384986"
+    )
+    assert manifest["releaseVerification"] == {
+        "verifiedAt": "2026-08-29T13:51:31.163Z",
+        "homeRoute": "PASS",
+        "projectsRoute": "PASS",
+        "project17Route": "PASS",
+        "project17Status": "ACTIVE",
+        "project17MilestoneStatus": "OPEN",
+        "contractExplorerLinks": True,
+        "applicationConsoleWarnings": 0,
+        "applicationConsoleErrors": 0,
+    }

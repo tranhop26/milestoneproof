@@ -21,7 +21,7 @@ All notable MilestoneProof changes are recorded here. Dates use UTC.
 
 - No Intelligent Contract code changed and no contract redeployment is required.
 - The canonical contract remains `0xE4081A4E9CD3A6eAc9Ce59f858257E1dee384986` on Studionet with classification `INTENTIONALLY_FROZEN`.
-- GitHub and Vercel production publication remain pending explicit action-time identity confirmation.
+- Published release commit `ebbacc16146adaa0ae31c978f7e5b52fd229bdc2` to GitHub and Vercel production deployment `dpl_CaUtyRonFMatpw5oa7ut93xKwo8m`; browser smoke passed on the home, Projects, and project `17` routes.
 - Release-candidate verification passed 341 direct tests plus the contract runtime probe, 4 local browser tests, lint, typecheck, build, and deployed-contract source/config verification; the confirmation-gated live browser test remained skipped.
 
 ## 2026-08-25 — Verified production MVP

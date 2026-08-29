@@ -53,14 +53,16 @@ The deployment script verified the finalized transaction, execution result, depl
 ## Frontend release evidence
 
 - Current verified production commit: `876d1d0ea987229d7cd8faa41e117dc45a1b6116`
-- Explorer-polish release commit: **PENDING FINAL RELEASE COMMIT**
-- Current Vercel deployment: `dpl_3tBYTdjsBMs8drpDFykieGFiM1NQ`
-- Final Explorer-polish Vercel deployment: **PENDING CONFIRMED PRODUCTION DEPLOYMENT**
+- Explorer-polish release commit: `ebbacc16146adaa0ae31c978f7e5b52fd229bdc2`
+- Explorer-polish Vercel deployment: `dpl_CaUtyRonFMatpw5oa7ut93xKwo8m`
+- Immutable deployment URL: https://milestoneproof-8kjlpvzn4-tdh-s-projects.vercel.app
 - Release improvement: `/projects` now reads both actor indexes from the contract, deduplicates them, and renders only authoritative project records with role filters and fail-closed error handling.
 
 ## Verification status
 
 The release candidate passed GenVM and web lint, all workspace typechecks, and a production build of 2,092 modules. Direct tests passed: 212 contract plus the runtime probe, 7 shared, and 122 web (341 tests total). Local Playwright passed 4 read-only/fixture tests with the 1 state-changing live test correctly skipped. `pnpm verify:contract` freshly reconfirmed the finalized successful deployment, source SHA-256, and `[0,3,3,4,3,259200]` configuration readback. The state-changing live suites were not rerun for this frontend-only release because existing contract evidence is preserved and no contract code changed.
+
+Production deployment `dpl_CaUtyRonFMatpw5oa7ut93xKwo8m` reached `READY` and received the production alias. Browser smoke verified `/`, `/projects`, and `/projects/17`; project `17` rendered `ACTIVE / OPEN`, the canonical contract, frozen actors and criterion, authoritative readback, and Studio Explorer links. The checked routes produced zero application console warnings or errors.
 
 ## Known limitations
 
