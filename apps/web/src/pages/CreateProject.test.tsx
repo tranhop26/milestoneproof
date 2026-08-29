@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest"
 import type { MilestoneProofContract } from "../lib/contract"
 import type { Eip1193Provider } from "../lib/genlayer"
 import { WalletProvider } from "../lib/wallet"
+import { queryKeys } from "../hooks/useMilestoneProof"
 import { CreateProject } from "./CreateProject"
 
 const CONTRACT = "0xc000000000000000000000000000000000000001" as const
@@ -98,7 +99,7 @@ function fakeContract(
 
 function renderCreate(contract: MilestoneProofContract, provider: Eip1193Provider | null) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  return render(
+  return { ...render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/projects/new"]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
         <WalletProvider provider={provider}>
@@ -109,7 +110,7 @@ function renderCreate(contract: MilestoneProofContract, provider: Eip1193Provide
         </WalletProvider>
       </MemoryRouter>
     </QueryClientProvider>,
-  )
+  ), queryClient }
 }
 
 async function completeRequiredFields(builder: string = BUILDER) {
@@ -185,6 +186,23 @@ describe("CreateProject", () => {
 
     gate.resolve()
     expect(await screen.findByText("Project readback route")).toBeInTheDocument()
+  })
+
+  it("invalidates sponsor and builder dashboard caches after authoritative creation readback", async () => {
+    const gate = deferred<void>()
+    const contract = fakeContract(gate)
+    const { queryClient } = renderCreate(contract, connectedProvider())
+    queryClient.setQueryData(queryKeys.actorProjectEntries(SPONSOR), [])
+    queryClient.setQueryData(queryKeys.actorProjectEntries(BUILDER), [])
+    await screen.findByRole("heading", { name: "Create a frozen project" })
+    const user = await completeRequiredFields()
+
+    await user.click(screen.getByRole("button", { name: "Create project on-chain" }))
+    gate.resolve()
+    expect(await screen.findByText("Project readback route")).toBeInTheDocument()
+
+    expect(queryClient.getQueryState(queryKeys.actorProjectEntries(SPONSOR))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(queryKeys.actorProjectEntries(BUILDER))?.isInvalidated).toBe(true)
   })
 
   it("reconciles a transient sponsor-index read failure before reporting project success", async () => {

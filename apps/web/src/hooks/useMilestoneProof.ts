@@ -53,9 +53,6 @@ export const queryKeys = {
   milestones: (projectId: string) => ["milestoneProof", "project", projectId, "milestones"] as const,
   milestone: (projectId: string, index: number) => ["milestoneProof", "project", projectId, "milestones", index] as const,
   submission: (submissionId: string) => ["milestoneProof", "submission", submissionId] as const,
-  actorProjects: (role: "sponsor" | "builder", actor: string) => [
-    "milestoneProof", "actorProjects", role, actor.toLowerCase(),
-  ] as const,
   actorProjectEntries: (actor: string) => [
     "milestoneProof", "actorProjectEntries", actor.toLowerCase(),
   ] as const,
@@ -255,8 +252,8 @@ export function useCreateProject(contract: MilestoneProofContract | null) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.project(readback.id), exact: true }),
         queryClient.invalidateQueries({ queryKey: queryKeys.milestones(readback.id) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.actorProjects("sponsor", readback.sponsor), exact: true }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.actorProjects("builder", readback.builder), exact: true }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.actorProjectEntries(readback.sponsor), exact: true }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.actorProjectEntries(readback.builder), exact: true }),
       ])
       return readback
     },
