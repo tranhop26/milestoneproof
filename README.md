@@ -28,6 +28,8 @@ docs/                Design, recovery runbook, and evidence matrix
 
 The contract is `INTENTIONALLY_FROZEN`: there is no owner, proxy, admin mutation, or upgrade path. The web app uses an accountless client for reads and a wallet-backed client for writes. There is no backend and no promoted feature is powered by mock data.
 
+The `/projects` dashboard reads both sponsor and builder indexes for the connected wallet, deduplicates project IDs, and then loads each displayed project from the contract. If either index or any project read fails, the dashboard reports the authoritative read failure instead of presenting a partial list.
+
 ## State machine summary
 
 Projects move from `ACTIVE` to `COMPLETED` or `FAILED`. Ordered milestones move through `LOCKED`, `OPEN`, `SUBMITTED`, `APPROVED`, or `FAILED`. Submission verdicts are `NONE`, `APPROVED`, `REJECTED`, `REQUEST_MORE_INFO`, and `UNRESOLVED`. Authorization, deadline, replay, attempt, evidence-integrity, and transition checks are enforced by the contract.
@@ -80,7 +82,7 @@ pnpm e2e:live             # state-changing deployed-browser flow; confirmation-g
 
 Deployment is intentionally gated. First set `GENLAYER_NETWORK` and `DEPLOYER_PRIVATE_KEY`, then run `pnpm deploy:contract:dry-run`. Confirm the printed network, derived deployer, source SHA-256, candidate commit, and manifest path. Only after explicit approval, set `CONFIRM_DEPLOY=YES` and run `pnpm deploy:contract`.
 
-The canonical frozen deployment is `0xE4081A4E9CD3A6eAc9Ce59f858257E1dee384986`; deployment transaction [`0x06070a…7421`](https://genlayer-explorer.vercel.app/tx/0x06070af739d7bc61b60c6e43ae71b6b301582207c18f86ebcf971579d23d7421) is `FINALIZED / FINISHED_WITH_RETURN`. The verified source SHA-256 is `2cded3b2849cbf7808ea91205520a24537895f66e68dc0a5e625e52ff99b510a`; authoritative `get_config` readback is `[0,3,3,4,3,259200]`. See [`deployments/studionet.json`](deployments/studionet.json).
+The canonical frozen deployment is `0xE4081A4E9CD3A6eAc9Ce59f858257E1dee384986`; deployment transaction [`0x06070a…7421`](https://explorer-studio.genlayer.com/tx/0x06070af739d7bc61b60c6e43ae71b6b301582207c18f86ebcf971579d23d7421) is `FINALIZED / FINISHED_WITH_RETURN`. The verified source SHA-256 is `2cded3b2849cbf7808ea91205520a24537895f66e68dc0a5e625e52ff99b510a`; authoritative `get_config` readback is `[0,3,3,4,3,259200]`. See [`deployments/studionet.json`](deployments/studionet.json).
 
 The deploy script waits for `FINALIZED`, requires successful execution, verifies the sender, reads `get_config`, compares source, and writes a schema-checked manifest. It refuses to overwrite an existing manifest.
 
@@ -96,26 +98,29 @@ The verified production deployment is [milestoneproof-zeta.vercel.app](https://m
 2. Connect the frozen builder wallet and submit one to four public evidence items.
 3. Sponsor or builder resolves the submission through GenLayer consensus.
 4. Wait for execution success and authoritative contract readback before relying on the verdict.
-5. Use resubmit, supplement, retry, or permissionless expiry only when the recorded state allows it.
+5. Open **Projects** to load the connected wallet's sponsor and builder indexes; use the role filters to enter a contract-backed workspace.
+6. Use resubmit, supplement, retry, or permissionless expiry only when the recorded state allows it.
 
 ## Verification evidence
 
-Fresh local and production verification on 2026-08-25 produced:
+The 2026-08-29 Explorer-polish candidate has passed focused unit, lint, typecheck, production-build, and responsive browser checks. Exact full-suite counts will be fixed here after the final local verification matrix and review, before publication. Current browser coverage includes the real `/projects` route on desktop and mobile; state-changing live coverage remains confirmation-gated and was not rerun for this frontend-only change.
+
+Previously preserved local and production verification includes:
 
 - `pnpm lint`: GenVM validation (16 methods) and ESLint passed;
 - `pnpm typecheck` and `pnpm build`: passed; production UI built from 2,091 modules;
-- `pnpm test`: 210 contract tests plus direct runtime probe, 7 shared tests, and 111 web tests passed;
-- local Playwright: 3 passed, 1 live test correctly skipped without confirmation flags;
 - authorized live Playwright recorded on 2026-08-24: 1 passed in 2.7 minutes, covering create, unrelated-wallet denial, builder submission, sponsor resolution, terminal suppression, and next-milestone readback;
 - contract live E2E recorded on 2026-08-24: authorized rejection plus approved happy path are preserved in [`deployments/studionet-live-e2e.json`](deployments/studionet-live-e2e.json).
 - Vercel production smoke: deployment `READY`; project `3` readback rendered `APPROVED`; the identical-party form branch was rejected before submission; a wallet-signed create transaction finalized successfully and production readback rendered project `17` as `ACTIVE` with milestone `OPEN`.
 
 Exact transaction and readback evidence is mapped in [the proof matrix](docs/evidence/proof-matrix.md).
+Copy-ready submission fields and the distinction between contract, live-write, fixture, and pending release evidence are in [the Explorer submission package](docs/evidence/explorer-submission.md).
 
 ## Known limitations
 
 - Studio queued one identical V8 deployment before its delayed UI state refreshed; `deployments/studionet-v8-duplicate.json` records it for transparency, but the frontend and canonical manifest use only `0xE408…4986`.
 - Studionet funding in live E2E uses the network simulation method and is explicitly Studionet-only.
 - The contract header pins the tested GenLayer runner; the linter currently reports that a newer runner is available, so upgrades require a fresh compatibility review.
+- The deployed contract uses the pinned and live-verified `run_nondet_unsafe` custom semantic path. Moving to a different nondeterministic API is a compatibility-sensitive contract change and requires a successor deployment; this does not imply that `run_nondet` is unavailable.
 - A frozen-contract defect requires successor deployment and manual recreation of unfinished projects; see [the recovery runbook](docs/recovery.md).
 - The UI supports one configured contract deployment at a time; historical addresses remain readable through their original explorer/manifest links.

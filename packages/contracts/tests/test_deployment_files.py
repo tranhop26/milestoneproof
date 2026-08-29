@@ -856,3 +856,35 @@ def test_live_e2e_opaque_funding_without_balance_increase_prevents_all_contract_
     assert calls.count("getBalance") == 6
     assert "write:" not in calls
     assert not evidence_path.exists()
+
+
+def test_release_docs_cover_contract_backed_projects_dashboard():
+    changelog = ROOT / "CHANGELOG.md"
+    assert changelog.exists()
+    text = changelog.read_text(encoding="utf-8")
+    assert "2026-08-29" in text
+    assert "contract-backed" in text.lower()
+    assert "Projects" in text
+
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "sponsor and builder indexes" in readme
+    assert "111 web tests" not in readme
+    assert "local Playwright: 3 passed" not in readme
+
+
+def test_explorer_submission_contains_canonical_evidence_and_limitations():
+    submission = ROOT / "docs" / "evidence" / "explorer-submission.md"
+    assert submission.exists()
+    text = submission.read_text(encoding="utf-8")
+    required = [
+        "0xE4081A4E9CD3A6eAc9Ce59f858257E1dee384986",
+        "0x06070af739d7bc61b60c6e43ae71b6b301582207c18f86ebcf971579d23d7421",
+        "2cded3b2849cbf7808ea91205520a24537895f66e68dc0a5e625e52ff99b510a",
+        "https://github.com/tranhop26/milestoneproof",
+        "https://milestoneproof-zeta.vercel.app",
+        "INTENTIONALLY_FROZEN",
+        "run_nondet_unsafe",
+        "PENDING FINAL RELEASE COMMIT",
+    ]
+    for value in required:
+        assert value in text
