@@ -139,6 +139,30 @@ test("responsive shell preserves navigation, workspace, hashes, and touch target
   expect(undersizedControls).toEqual([])
 })
 
+test("projects dashboard replaces the placeholder across responsive navigation", async ({ page }) => {
+  const applicationWarnings: string[] = []
+  page.on("console", (message) => {
+    if (message.type() === "warning" || message.type() === "error") applicationWarnings.push(message.text())
+  })
+
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto("/projects")
+  await expect(page.getByRole("heading", { name: "Your projects" })).toBeVisible()
+  await expect(page.getByText(/indexed by your connected wallet/i)).toBeVisible()
+  await expect(page.getByText("Connect your wallet")).toBeVisible()
+  await expect(page.getByText(/Connect a wallet to load sponsor or builder projects/)).toHaveCount(0)
+  await expect(page.locator(".desktop-sidebar")).toBeVisible()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.locator(".desktop-sidebar")).toBeHidden()
+  await page.getByRole("button", { name: "Open navigation" }).click()
+  await expect(page.getByRole("dialog", { name: "Navigation" })).toBeVisible()
+  await expect(page.getByRole("dialog", { name: "Navigation" }).getByRole("link", { name: "Projects" })).toBeVisible()
+  await page.getByRole("button", { name: "Close navigation" }).click()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+  expect(applicationWarnings).toEqual([])
+})
+
 test.describe("@live contract lifecycle", () => {
   test.skip(!env.E2E_CONTRACT_ADDRESS, "E2E_CONTRACT_ADDRESS is required")
   test.skip(env.CONFIRM_LIVE_E2E !== "YES", "CONFIRM_LIVE_E2E=YES is required after action-time confirmation")

@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test"
 import { env } from "node:process"
 
 const PORT = 4178
+const READ_ONLY_CONTRACT_ADDRESS = "0xE4081A4E9CD3A6eAc9Ce59f858257E1dee384986"
 
 export default defineConfig({
   testDir: "./e2e",
@@ -24,7 +25,7 @@ export default defineConfig({
     env: {
       ...env,
       VITE_ENABLE_E2E_WALLET: "true",
-      VITE_MILESTONEPROOF_ADDRESS: env.E2E_CONTRACT_ADDRESS ?? "",
+      VITE_MILESTONEPROOF_ADDRESS: env.E2E_CONTRACT_ADDRESS ?? READ_ONLY_CONTRACT_ADDRESS,
     },
   },
 })
