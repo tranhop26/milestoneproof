@@ -6,6 +6,7 @@ import { useWallet } from "./lib/wallet"
 import { CreateProject } from "./pages/CreateProject"
 import { Landing } from "./pages/Landing"
 import { ProjectWorkspace } from "./pages/ProjectWorkspace"
+import { Projects } from "./pages/Projects"
 import { SubmissionDetail } from "./pages/SubmissionDetail"
 
 function WalletControl() {
@@ -38,22 +39,12 @@ function WalletControl() {
   )
 }
 
-function RoutePlaceholder({ title, detail }: { title: string; detail: string }) {
-  return (
-    <section className="empty-state">
-      <p className="eyebrow">MilestoneProof</p>
-      <h1>{title}</h1>
-      <p>{detail}</p>
-    </section>
-  )
-}
-
 export function App() {
   return (
     <AppShell actions={<WalletControl />}>
       <Routes>
         <Route element={<Landing />} path="/" />
-        <Route element={<RoutePlaceholder detail="Connect a wallet to load sponsor or builder projects directly from the contract." title="Projects" />} path="/projects" />
+        <Route element={<Projects />} path="/projects" />
         <Route element={<CreateProject />} path="/projects/new" />
         <Route element={<ProjectWorkspace />} path="/projects/:projectId" />
         <Route element={<SubmissionDetail />} path="/submissions/:submissionId" />

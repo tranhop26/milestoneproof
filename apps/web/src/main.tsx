@@ -19,7 +19,7 @@ const queryClient = new QueryClient({
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
         <WalletProvider>
           <App />
         </WalletProvider>
