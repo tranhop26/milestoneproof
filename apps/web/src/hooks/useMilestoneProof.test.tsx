@@ -7,7 +7,12 @@ import { describe, expect, it, vi } from "vitest"
 import type { MilestoneProofContract } from "../lib/contract"
 import type { Eip1193Provider } from "../lib/genlayer"
 import { useWallet, WalletProvider } from "../lib/wallet"
-import { useMilestoneActions, type MilestoneAction } from "./useMilestoneProof"
+import {
+  queryKeys,
+  useActorProjects,
+  useMilestoneActions,
+  type MilestoneAction,
+} from "./useMilestoneProof"
 
 const CONTRACT = "0xc000000000000000000000000000000000000001" as const
 const SPONSOR = "0x1000000000000000000000000000000000000001" as const
@@ -58,6 +63,73 @@ function renderActions(contractValue: MilestoneProofContract) {
 async function connected(hook: ReturnType<typeof renderActions>) {
   await waitFor(() => expect(hook.result.current.wallet.status).toBe("CONNECTED"))
 }
+
+function renderActorProjects(contractValue: MilestoneProofContract, actor: string | null, enabled = true) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const wrapper = ({ children }: PropsWithChildren) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+  return renderHook(() => useActorProjects(contractValue, actor, enabled), { wrapper })
+}
+
+describe("useActorProjects", () => {
+  it("deduplicates sponsor and builder indexes while preserving role metadata and index order", async () => {
+    const projects = new Map([
+      ["5", project({ id: "5", title: "Newest sponsored" })],
+      ["3", project({ id: "3", title: "Dual role" })],
+      ["4", project({ id: "4", title: "Builder project" })],
+    ])
+    const adapter = contract({
+      project: () => project(),
+      milestone: () => milestone(),
+      submission: () => submission(),
+    })
+    vi.mocked(adapter.reads.actorProjects).mockImplementation(async (_actor, role) => (
+      role === "sponsor" ? ["5", "3"] : ["4", "3"]
+    ))
+    vi.mocked(adapter.reads.project).mockImplementation(async (id) => projects.get(id)!)
+
+    const hook = renderActorProjects(adapter, SPONSOR)
+
+    await waitFor(() => expect(hook.result.current.isSuccess).toBe(true))
+    expect(hook.result.current.data?.map(({ project: entry }) => entry.id)).toEqual(["5", "3", "4"])
+    expect(hook.result.current.data?.find(({ project: entry }) => entry.id === "3")?.roles)
+      .toEqual(["sponsor", "builder"])
+    expect(adapter.reads.project).toHaveBeenCalledTimes(3)
+  })
+
+  it("fails closed when either actor index or a project read fails", async () => {
+    const indexFailure = contract({ project: () => project(), milestone: () => milestone(), submission: () => submission() })
+    vi.mocked(indexFailure.reads.actorProjects).mockImplementation(async (_actor, role) => {
+      if (role === "builder") throw new Error("builder index unavailable")
+      return ["5"]
+    })
+    const failedIndexHook = renderActorProjects(indexFailure, SPONSOR)
+    await waitFor(() => expect(failedIndexHook.result.current.error).toEqual(new Error("builder index unavailable")))
+
+    const projectFailure = contract({ project: () => project(), milestone: () => milestone(), submission: () => submission() })
+    vi.mocked(projectFailure.reads.actorProjects).mockResolvedValue(["5"])
+    vi.mocked(projectFailure.reads.project).mockRejectedValue(new Error("project unavailable"))
+    const failedProjectHook = renderActorProjects(projectFailure, SPONSOR)
+    await waitFor(() => expect(failedProjectHook.result.current.error).toEqual(new Error("project unavailable")))
+  })
+
+  it("does not read projects for empty or disabled actor indexes and normalizes cache identity", async () => {
+    expect(queryKeys.actorProjectEntries(SPONSOR.toUpperCase())).toEqual(
+      queryKeys.actorProjectEntries(SPONSOR.toLowerCase()),
+    )
+    const adapter = contract({ project: () => project(), milestone: () => milestone(), submission: () => submission() })
+    vi.mocked(adapter.reads.actorProjects).mockResolvedValue([])
+    const emptyHook = renderActorProjects(adapter, SPONSOR)
+    await waitFor(() => expect(emptyHook.result.current.data).toEqual([]))
+    expect(adapter.reads.project).not.toHaveBeenCalled()
+
+    const disabledAdapter = contract({ project: () => project(), milestone: () => milestone(), submission: () => submission() })
+    const disabledHook = renderActorProjects(disabledAdapter, SPONSOR, false)
+    expect(disabledHook.result.current.fetchStatus).toBe("idle")
+    expect(disabledAdapter.reads.actorProjects).not.toHaveBeenCalled()
+  })
+})
 
 describe("useMilestoneActions authoritative gates", () => {
   it.each([

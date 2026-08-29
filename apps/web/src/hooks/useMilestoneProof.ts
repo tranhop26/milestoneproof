@@ -12,6 +12,7 @@ import {
   createClientNonce,
   createMilestoneProofContract,
   getConfiguredContractAddress,
+  type ActorRole,
   type ContractClient,
   type CreateProjectInput,
   type MilestoneProofContract,
@@ -55,6 +56,53 @@ export const queryKeys = {
   actorProjects: (role: "sponsor" | "builder", actor: string) => [
     "milestoneProof", "actorProjects", role, actor.toLowerCase(),
   ] as const,
+  actorProjectEntries: (actor: string) => [
+    "milestoneProof", "actorProjectEntries", actor.toLowerCase(),
+  ] as const,
+}
+
+export interface ActorProjectEntry {
+  project: ProjectView
+  roles: ActorRole[]
+}
+
+export function useActorProjects(
+  contract: MilestoneProofContract | null,
+  actor: string | null,
+  enabled = true,
+) {
+  const normalizedActor = actor?.toLowerCase() ?? ""
+  return useQuery({
+    queryKey: queryKeys.actorProjectEntries(normalizedActor),
+    queryFn: async (): Promise<ActorProjectEntry[]> => {
+      if (!contract || !normalizedActor) throw new Error("A connected actor and contract are required.")
+      const [sponsorIds, builderIds] = await Promise.all([
+        contract.reads.actorProjects(normalizedActor, "sponsor"),
+        contract.reads.actorProjects(normalizedActor, "builder"),
+      ])
+      const orderedIds: string[] = []
+      const rolesById = new Map<string, Set<ActorRole>>()
+      const add = (ids: string[], role: ActorRole) => {
+        for (const id of ids) {
+          let roles = rolesById.get(id)
+          if (!roles) {
+            roles = new Set<ActorRole>()
+            rolesById.set(id, roles)
+            orderedIds.push(id)
+          }
+          roles.add(role)
+        }
+      }
+      add(sponsorIds, "sponsor")
+      add(builderIds, "builder")
+      const projects = await Promise.all(orderedIds.map((id) => contract.reads.project(id)))
+      return projects.map((project, index) => ({
+        project,
+        roles: Array.from(rolesById.get(orderedIds[index]) ?? []),
+      }))
+    },
+    enabled: Boolean(enabled && contract && normalizedActor),
+  })
 }
 
 export function useMilestoneProofContract(override?: MilestoneProofContract): {
